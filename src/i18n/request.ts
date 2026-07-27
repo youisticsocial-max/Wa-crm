@@ -6,10 +6,10 @@ export default getRequestConfig(async () => {
 
   let messages;
   try {
-    messages = (await import(`../../messages/${locale}.json`)).default;
+    messages = (await import(`../../messages/${locale}.json` as any)).default;
   } catch (error) {
     // Fallback to English if the dictionary for the requested locale doesn't exist yet
-    messages = (await import(`../../messages/en.json`)).default;
+    messages = (await import(`../../messages/en.json` as any)).default;
   }
 
   return {
