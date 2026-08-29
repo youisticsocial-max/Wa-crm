@@ -2,6 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  // The auth callback route exchanges a Supabase recovery/PKCE code for a
+  // session. It must never be intercepted — no session exists yet at this
+  // point, so any auth check here would always fail and redirect to /login
+  // before the code can be consumed.
+  if (request.nextUrl.pathname === '/auth/callback') {
+    return NextResponse.next()
+  }
+
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -51,7 +59,8 @@ export async function middleware(request: NextRequest) {
   if (user && (
     request.nextUrl.pathname === '/login' ||
     request.nextUrl.pathname === '/signup' ||
-    request.nextUrl.pathname === '/forgot-password'
+    request.nextUrl.pathname === '/forgot-password' ||
+    request.nextUrl.pathname === '/update-password'
   )) {
     const url = request.nextUrl.clone()
     const inviteToken = request.nextUrl.searchParams.get('invite')
