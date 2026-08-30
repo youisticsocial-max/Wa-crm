@@ -17,6 +17,25 @@ describe('extractHandoffBrief', () => {
     expect(brief.nextAction).toBe('Review scope and confirm price/timeline')
   })
 
+  it('prioritizes latest explicit timeline over earlier timeline', () => {
+    const brief = extractHandoffBrief([
+      { role: 'user', content: 'Need a custom ERP with inventory and billing. Timeline 1 month.' },
+      { role: 'user', content: 'Urgent correction: mujhe 5 din me chahiye bht urgent he. 1lkh paise le lena.' },
+    ])
+
+    expect(brief.timeline).toBe('5 din')
+    expect(brief.budget).toBe('1lkh')
+  })
+
+  it('prioritizes latest explicit budget over earlier budget', () => {
+    const brief = extractHandoffBrief([
+      { role: 'user', content: 'Looking for custom software. Budget is 80k.' },
+      { role: 'user', content: 'Actually my budget is 1lakh now.' },
+    ])
+
+    expect(brief.budget).toBe('1lakh')
+  })
+
   it('omits budget and timeline when not explicitly mentioned in user text (no hallucination)', () => {
     const brief = extractHandoffBrief([
       { role: 'user', content: 'Can I speak to a human manager about my refund?' },
@@ -49,6 +68,17 @@ describe('buildHandoffSummary', () => {
     expect(summary).toContain('Next action: Review scope and confirm price/timeline')
   })
 
+  it('does not say "without replying" when a bridge message is dispatched during handoff', () => {
+    const summary = buildHandoffSummary({
+      messages: [{ role: 'user', content: 'Need custom ERP in 5 days' }],
+      replyCount: 0,
+      hasBridgeMessage: true,
+    })
+
+    expect(summary).not.toContain('(without replying)')
+    expect(summary).toContain('🤖 AI agent handed off (after 1 reply):')
+  })
+
   it('omits budget and timeline lines cleanly when missing', () => {
     const summary = buildHandoffSummary({
       messages: [{ role: 'user', content: 'I need a refund for my order.' }],
@@ -74,12 +104,15 @@ describe('buildHandoffSummary', () => {
 })
 
 describe('buildBridgeMessage', () => {
-  it('generates a context-aware bridge message for ERP inquiry in Hinglish', () => {
+  it('formats bridge messages into short readable paragraphs with double line breaks', () => {
     const msg = buildBridgeMessage([
-      { role: 'user', content: 'Hi, hume inventory aur billing ke liye custom ERP chahiye. Aapki team connect karegi?' },
+      { role: 'user', content: 'Hi, hume inventory aur billing ke liye custom ERP chahiye, 5 din me deliver ho jayega?' },
     ])
     expect(msg).toContain('Inventory + billing')
     expect(msg).toContain('ERP')
+    expect(msg).toContain('\n\n')
+    const paragraphs = msg.split('\n\n')
+    expect(paragraphs.length).toBeGreaterThanOrEqual(2)
   })
 
   it('generates a clear bridge message for refund requests in English', () => {

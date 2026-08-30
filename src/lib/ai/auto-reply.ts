@@ -133,6 +133,10 @@ export async function dispatchInboundToAiReply(
     })
 
     if (handoff || !text) {
+      // Ensure the customer gets a natural bridge message rather than an abrupt silence.
+      const bridgeText = text && text.trim() ? text.trim() : buildBridgeMessage(messages)
+      const hasBridge = Boolean(bridgeText)
+
       // The model can't (or shouldn't) answer — stop auto-replying on
       // this thread and hand it to a human. We (a) pause the bot here
       // (sticky until re-enabled), (b) route the conversation to the
@@ -143,6 +147,7 @@ export async function dispatchInboundToAiReply(
       const summary = buildHandoffSummary({
         messages,
         replyCount: conv.ai_reply_count ?? 0,
+        hasBridgeMessage: hasBridge,
       })
       const update: Record<string, unknown> = {
         ai_autoreply_disabled: true,
@@ -154,9 +159,6 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
-
-      // Ensure the customer gets a natural bridge message rather than an abrupt silence.
-      const bridgeText = text && text.trim() ? text.trim() : buildBridgeMessage(messages)
       if (bridgeText) {
         const { data: claimed } = await db.rpc('claim_ai_reply_slot', {
           conversation_id: conversationId,
