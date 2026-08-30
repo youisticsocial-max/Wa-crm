@@ -144,9 +144,9 @@ export function AiThreadBanner({
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">{t("pausedTitle")}</p>
           {handoffSummary && (
-            <p className="truncate text-muted-foreground" title={handoffSummary}>
+            <div className="mt-1.5 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted-foreground">
               {handoffSummary}
-            </p>
+            </div>
           )}
         </div>
         <BannerButton onClick={() => toggle(false)} busy={busy} icon={Undo2}>
@@ -185,9 +185,9 @@ function Banner({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-b px-3 py-2 text-xs sm:px-4",
+        "flex items-start justify-between gap-3 border-b px-3 py-2 text-xs sm:px-4",
         tone === "primary"
-          ? "border-primary/20 bg-primary/5"
+          ? "border-primary/20 bg-primary/5 items-center"
           : "border-border bg-muted/40",
       )}
     >

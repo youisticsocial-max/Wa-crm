@@ -4,7 +4,7 @@ import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
 import { buildSystemPrompt } from './defaults'
-import { buildHandoffSummary } from './handoff'
+import { buildHandoffSummary, buildBridgeMessage } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
@@ -137,7 +137,7 @@ export async function dispatchInboundToAiReply(
       // this thread and hand it to a human. We (a) pause the bot here
       // (sticky until re-enabled), (b) route the conversation to the
       // configured handoff agent — null leaves it in the shared queue —
-      // and (c) leave a short internal note so whoever picks it up has
+      // and (c) leave a structured internal brief so whoever picks it up has
       // context. Assigning fires the `on_conversation_assigned` trigger,
       // which notifies the agent.
       const summary = buildHandoffSummary({
@@ -154,6 +154,26 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      // Ensure the customer gets a natural bridge message rather than an abrupt silence.
+      const bridgeText = text && text.trim() ? text.trim() : buildBridgeMessage(messages)
+      if (bridgeText) {
+        const { data: claimed } = await db.rpc('claim_ai_reply_slot', {
+          conversation_id: conversationId,
+          max_replies: config.autoReplyMaxPerConversation,
+        })
+
+        if (claimed === true) {
+          await engineSendText({
+            accountId,
+            userId: configOwnerUserId,
+            conversationId,
+            contactId,
+            text: bridgeText,
+            aiGenerated: true,
+          })
+        }
+      }
       return
     }
 
