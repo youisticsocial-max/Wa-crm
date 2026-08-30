@@ -5,7 +5,7 @@ import {
   type ChatMessage,
   type GenerateResult,
 } from './types'
-import { HANDOFF_SENTINEL, aiRequestTimeoutMs } from './defaults'
+import { AI_PROVIDER_DEFAULT_ENDPOINT, HANDOFF_SENTINEL, aiRequestTimeoutMs } from './defaults'
 import { generateOpenAi } from './providers/openai'
 import { generateAnthropic } from './providers/anthropic'
 
@@ -25,9 +25,15 @@ export interface GenerateArgs {
 export async function generateReply(args: GenerateArgs): Promise<GenerateResult> {
   const { config, systemPrompt, messages } = args
   const timeoutMs = aiRequestTimeoutMs()
+  const resolvedBaseUrl =
+    config.baseUrl && config.baseUrl.trim()
+      ? config.baseUrl.trim()
+      : (AI_PROVIDER_DEFAULT_ENDPOINT[config.provider] ?? null)
+
   const providerArgs = {
     apiKey: config.apiKey,
     model: config.model,
+    baseUrl: resolvedBaseUrl,
     systemPrompt,
     messages,
     timeoutMs,
@@ -35,11 +41,16 @@ export async function generateReply(args: GenerateArgs): Promise<GenerateResult>
 
   let result: { text: string; usage: AiUsage | null }
   switch (config.provider) {
-    case 'openai':
-      result = await generateOpenAi(providerArgs)
-      break
     case 'anthropic':
       result = await generateAnthropic(providerArgs)
+      break
+    case 'openai':
+    case 'groq':
+    case 'openrouter':
+    case 'gemini':
+    case 'ollama':
+    case 'custom':
+      result = await generateOpenAi(providerArgs)
       break
     default:
       throw new AiError(`Unsupported AI provider: ${config.provider}`, {

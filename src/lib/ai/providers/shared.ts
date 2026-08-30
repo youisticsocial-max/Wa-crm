@@ -7,6 +7,7 @@ import { AiError, type AiUsage, type ChatMessage } from '../types'
 export interface ProviderArgs {
   apiKey: string
   model: string
+  baseUrl?: string | null
   systemPrompt: string
   messages: ChatMessage[]
   timeoutMs: number

@@ -41,11 +41,21 @@ const HANDOFF_QUEUE = '__queue__';
 const PROVIDER_LABEL: Record<AiProvider, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
+  groq: 'Groq (Free & Fast)',
+  openrouter: 'OpenRouter (Free Tier Available)',
+  gemini: 'Google Gemini',
+  ollama: 'Ollama (Self-Hosted)',
+  custom: 'Custom OpenAI-Compatible',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
+  groq: 'gsk_...',
+  openrouter: 'sk-or-...',
+  gemini: 'AIzaSy...',
+  ollama: 'Optional for local server',
+  custom: 'API Key (if required)',
 };
 
 export function AiConfig() {
@@ -61,6 +71,7 @@ export function AiConfig() {
   const [configured, setConfigured] = useState(false);
   const [provider, setProvider] = useState<AiProvider>('openai');
   const [model, setModel] = useState(AI_PROVIDER_DEFAULT_MODEL.openai);
+  const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [keyEdited, setKeyEdited] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -95,6 +106,7 @@ export function AiConfig() {
         setConfigured(true);
         setProvider(data.provider);
         setModel(data.model);
+        setBaseUrl(data.base_url ?? '');
         setSystemPrompt(data.system_prompt ?? '');
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
@@ -128,11 +140,7 @@ export function AiConfig() {
   // typed a custom model.
   const handleProviderChange = (next: AiProvider) => {
     setProvider(next);
-    const isDefaultModel =
-      model === AI_PROVIDER_DEFAULT_MODEL.openai ||
-      model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
-      model.trim() === '';
-    if (isDefaultModel) setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
+    setModel(AI_PROVIDER_DEFAULT_MODEL[next] ?? '');
   };
 
   const keyPayload = () => (keyEdited ? apiKey.trim() : undefined);
@@ -144,6 +152,7 @@ export function AiConfig() {
   const buildBody = () => ({
     provider,
     model: model.trim(),
+    base_url: baseUrl.trim() || null,
     api_key: keyPayload(),
     embeddings_api_key: embeddingsKeyPayload(),
     system_prompt: systemPrompt.trim() || null,
@@ -162,6 +171,7 @@ export function AiConfig() {
         body: JSON.stringify({
           provider,
           model: model.trim(),
+          base_url: baseUrl.trim() || null,
           api_key: keyPayload(),
         }),
       });
@@ -180,7 +190,7 @@ export function AiConfig() {
       toast.error(t('missingModel'));
       return;
     }
-    if (!configured && !keyEdited) {
+    if (!configured && !keyEdited && provider !== 'ollama' && provider !== 'custom') {
       toast.error(t('missingApiKey'));
       return;
     }
@@ -214,6 +224,7 @@ export function AiConfig() {
         setConfigured(false);
         setHasStoredKey(false);
         setApiKey('');
+        setBaseUrl('');
         setKeyEdited(false);
         setIsActive(false);
         setAutoReplyEnabled(false);
@@ -233,8 +244,7 @@ export function AiConfig() {
   if (loading || profileLoading) {
     return (
       <div className="flex items-center justify-center py-16 text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('loadFailed')} {/* Re-using label or a global one, wait, loading is better. Let's use useTranslations from overview or just hardcode Loading... actually I should add loading to aiConfig */}
-        {/* Wait, I didn't add loading to aiConfig. I'll just use loading. */}
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('loadFailed')}
       </div>
     );
   }
@@ -278,9 +288,12 @@ export function AiConfig() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="openai">{PROVIDER_LABEL.openai}</SelectItem>
-                    <SelectItem value="anthropic">
-                      {PROVIDER_LABEL.anthropic}
-                    </SelectItem>
+                    <SelectItem value="anthropic">{PROVIDER_LABEL.anthropic}</SelectItem>
+                    <SelectItem value="groq">{PROVIDER_LABEL.groq}</SelectItem>
+                    <SelectItem value="openrouter">{PROVIDER_LABEL.openrouter}</SelectItem>
+                    <SelectItem value="gemini">{PROVIDER_LABEL.gemini}</SelectItem>
+                    <SelectItem value="ollama">{PROVIDER_LABEL.ollama}</SelectItem>
+                    <SelectItem value="custom">{PROVIDER_LABEL.custom}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -296,6 +309,23 @@ export function AiConfig() {
                 />
               </div>
             </div>
+
+            {(provider === 'ollama' || provider === 'custom') && (
+              <div className="space-y-2">
+                <Label htmlFor="ai-base-url">Base URL</Label>
+                <Input
+                  id="ai-base-url"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder={
+                    provider === 'ollama'
+                      ? 'http://localhost:11434/v1/chat/completions'
+                      : 'https://your-custom-endpoint/v1/chat/completions'
+                  }
+                  disabled={disabled}
+                />
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="ai-key">{t('apiKey')}</Label>

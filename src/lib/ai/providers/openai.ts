@@ -25,16 +25,21 @@ interface OpenAiResponse {
  * in `generateReply`).
  */
 export async function generateOpenAi(args: ProviderArgs): Promise<ProviderResult> {
-  const { apiKey, model, systemPrompt, messages, timeoutMs } = args
+  const { apiKey, model, baseUrl, systemPrompt, messages, timeoutMs } = args
+  const targetUrl = baseUrl && baseUrl.trim() ? baseUrl.trim() : OPENAI_URL
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+  if (apiKey && apiKey.trim()) {
+    headers['Authorization'] = `Bearer ${apiKey.trim()}`
+  }
 
   let res: Response
   try {
-    res = await fetch(OPENAI_URL, {
+    res = await fetch(targetUrl, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         model,
         messages: [
@@ -50,13 +55,13 @@ export async function generateOpenAi(args: ProviderArgs): Promise<ProviderResult
   }
 
   if (!res.ok) {
-    throw await providerHttpError('OpenAI', res)
+    throw await providerHttpError('AI provider', res)
   }
 
   const data = (await res.json().catch(() => null)) as OpenAiResponse | null
   const text = data?.choices?.[0]?.message?.content
   if (!text || typeof text !== 'string' || !text.trim()) {
-    throw new AiError('OpenAI returned an empty response.', {
+    throw new AiError('Provider returned an empty response.', {
       code: 'empty_response',
     })
   }

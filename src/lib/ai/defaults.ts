@@ -11,8 +11,23 @@ import type { AiProvider } from './types'
  * starting point, never a hard allow-list.
  */
 export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
-  openai: 'gpt-5.4-mini',
-  anthropic: 'claude-haiku-4-5-20251001',
+  openai: 'gpt-4o-mini',
+  anthropic: 'claude-3-5-haiku-latest',
+  groq: 'llama-3.3-70b-versatile',
+  openrouter: 'openrouter/free',
+  gemini: 'gemini-2.0-flash',
+  ollama: 'llama3',
+  custom: 'gpt-4o-mini',
+}
+
+export const AI_PROVIDER_DEFAULT_ENDPOINT: Record<AiProvider, string> = {
+  openai: 'https://api.openai.com/v1/chat/completions',
+  anthropic: 'https://api.anthropic.com/v1/messages',
+  groq: 'https://api.groq.com/openai/v1/chat/completions',
+  openrouter: 'https://openrouter.ai/api/v1/chat/completions',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+  ollama: 'http://localhost:11434/v1/chat/completions',
+  custom: 'https://api.openai.com/v1/chat/completions',
 }
 
 /**

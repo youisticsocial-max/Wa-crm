@@ -3,9 +3,10 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import type { AiConfig } from './types'
 
 interface AiConfigRow {
-  provider: 'openai' | 'anthropic'
+  provider: 'openai' | 'anthropic' | 'groq' | 'openrouter' | 'gemini' | 'ollama' | 'custom'
   model: string
   api_key: string
+  base_url?: string | null
   system_prompt: string | null
   is_active: boolean
   auto_reply_enabled: boolean
@@ -15,7 +16,7 @@ interface AiConfigRow {
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'provider, model, api_key, base_url, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -47,10 +48,9 @@ export async function loadAiConfig(
   // The Playground passes requireActive:false so an admin can test the
   // agent before flipping the master switch on.
   if (requireActive && !row.is_active) return null
-  // Defensive: the column is NOT NULL, but a partial write / manual DB
-  // edit could leave it empty. Treat a missing key as "not configured"
-  // rather than letting decrypt() throw on null.
-  if (!row.api_key) return null
+  // Defensive: for providers other than ollama, the api_key column is required.
+  // Ollama/custom local endpoints may operate with an empty or optional key.
+  if (!row.api_key && row.provider !== 'ollama' && row.provider !== 'custom') return null
 
   // The embeddings key is optional and independent of the chat key —
   // a corrupt/undecryptable one should downgrade to lexical KB, not
@@ -69,10 +69,20 @@ export async function loadAiConfig(
     }
   }
 
+  let apiKeyPlain = ''
+  if (row.api_key) {
+    try {
+      apiKeyPlain = decrypt(row.api_key)
+    } catch (err) {
+      if (row.provider !== 'ollama') throw err
+    }
+  }
+
   return {
     provider: row.provider,
     model: row.model,
-    apiKey: decrypt(row.api_key),
+    apiKey: apiKeyPlain,
+    baseUrl: row.base_url ?? null,
     systemPrompt: row.system_prompt,
     isActive: row.is_active,
     autoReplyEnabled: row.auto_reply_enabled,

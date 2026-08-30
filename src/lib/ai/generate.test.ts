@@ -192,3 +192,90 @@ describe('generateReply — Anthropic', () => {
     expect(body.messages).toHaveLength(1)
   })
 })
+
+describe('generateReply — Multi-Providers', () => {
+  it('routes Groq requests to api.groq.com endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'Groq reply' } }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'groq', model: 'llama-3.3-70b-versatile', apiKey: 'gsk-test' }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    expect(res.text).toBe('Groq reply')
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.groq.com/openai/v1/chat/completions')
+    expect(opts.headers.Authorization).toBe('Bearer gsk-test')
+  })
+
+  it('routes OpenRouter requests to openrouter.ai endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'OpenRouter reply' } }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'openrouter', model: 'openrouter/free', apiKey: 'sk-or-test' }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    expect(res.text).toBe('OpenRouter reply')
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
+    expect(opts.headers.Authorization).toBe('Bearer sk-or-test')
+  })
+
+  it('routes Gemini requests to generativelanguage.googleapis.com endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'Gemini reply' } }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'gemini', model: 'gemini-2.0-flash', apiKey: 'AIza-test' }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    expect(res.text).toBe('Gemini reply')
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions')
+    expect(opts.headers.Authorization).toBe('Bearer AIza-test')
+  })
+
+  it('routes Ollama / Custom requests using specified baseUrl', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'Ollama reply' } }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({
+        provider: 'ollama',
+        model: 'llama3',
+        baseUrl: 'http://my-ollama:11434/v1/chat/completions',
+        apiKey: '',
+      }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    expect(res.text).toBe('Ollama reply')
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('http://my-ollama:11434/v1/chat/completions')
+  })
+})
+
