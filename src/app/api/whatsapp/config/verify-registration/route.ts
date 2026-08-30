@@ -140,17 +140,31 @@ export async function GET() {
     )
   }
 
-  const live =
-    checks.phone_metadata_ok &&
-    (checks.waba_subscribed_to_app ?? false) &&
-    checks.locally_marked_registered
+  const metaLive = checks.phone_metadata_ok && (checks.waba_subscribed_to_app ?? false)
+
+  let registeredAt = config.registered_at ?? null
+  if (metaLive && !registeredAt) {
+    registeredAt = new Date().toISOString()
+    checks.locally_marked_registered = true
+    await supabase
+      .from('whatsapp_config')
+      .update({
+        registered_at: registeredAt,
+        last_registration_error: null,
+        status: 'connected',
+        updated_at: registeredAt,
+      })
+      .eq('id', config.id)
+  }
+
+  const live = metaLive && checks.locally_marked_registered
 
   return NextResponse.json({
     live,
     checks,
     errors,
     last_registration_error: config.last_registration_error ?? null,
-    registered_at: config.registered_at ?? null,
+    registered_at: registeredAt,
     subscribed_apps_at: config.subscribed_apps_at ?? null,
   })
 }
