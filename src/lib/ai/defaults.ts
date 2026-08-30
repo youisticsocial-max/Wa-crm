@@ -69,8 +69,10 @@ export function buildSystemPrompt(args: {
   mode: 'draft' | 'auto_reply'
   /** Knowledge-base excerpts retrieved for the current question. */
   knowledge?: string[]
+  /** Optional agent notes/prompt typed into composer to guide the draft. */
+  agentInstructions?: string | null
 }): string {
-  const { userPrompt, mode, knowledge } = args
+  const { userPrompt, mode, knowledge, agentInstructions } = args
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
       'You are shown the recent WhatsApp conversation between the business (assistant) and a customer (user). ' +
@@ -89,6 +91,10 @@ export function buildSystemPrompt(args: {
 
   if (userPrompt && userPrompt.trim()) {
     parts.push(`Business context and instructions:\n${userPrompt.trim()}`)
+  }
+
+  if (agentInstructions && agentInstructions.trim()) {
+    parts.push(`Agent guidance for drafting this response:\n${agentInstructions.trim()}`)
   }
 
   if (knowledge && knowledge.length > 0) {

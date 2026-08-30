@@ -36,6 +36,8 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     const conversationId =
       body && typeof body.conversation_id === 'string' ? body.conversation_id : ''
+    const agentPrompt =
+      body && typeof body.prompt === 'string' && body.prompt.trim() ? body.prompt.trim() : null
     if (!conversationId) {
       return NextResponse.json(
         { error: 'conversation_id is required' },
@@ -102,6 +104,7 @@ export async function POST(request: Request) {
       userPrompt: config.systemPrompt,
       mode: 'draft',
       knowledge,
+      agentInstructions: agentPrompt,
     })
 
     const { text, usage } = await generateReply({ config, systemPrompt, messages })

@@ -9,6 +9,7 @@ function fakeDb(rows: unknown[]): SupabaseClient {
     from: () => chain,
     select: () => chain,
     eq: () => chain,
+    in: () => chain,
     order: () => chain,
     limit: () => Promise.resolve({ data: rows, error: null }),
   }
@@ -49,5 +50,17 @@ describe('buildConversationContext', () => {
       'conv-1',
     )
     expect(out).toEqual([{ role: 'user', content: 'real' }])
+  })
+
+  it('includes interactive and template content types', async () => {
+    const rows = [
+      { sender_type: 'customer', content_text: 'tapped option A', content_type: 'interactive' },
+      { sender_type: 'agent', content_text: 'template welcome', content_type: 'template' },
+    ]
+    const out = await buildConversationContext(fakeDb(rows), 'conv-1')
+    expect(out).toEqual([
+      { role: 'assistant', content: 'template welcome' },
+      { role: 'user', content: 'tapped option A' },
+    ])
   })
 })

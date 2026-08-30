@@ -264,7 +264,10 @@ export function MessageComposer({
       const res = await fetch("/api/ai/draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId }),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          prompt: text.trim() || undefined,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -296,7 +299,7 @@ export function MessageComposer({
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight]);
+  }, [drafting, conversationId, text, adjustHeight]);
 
   // ---- Interactive message + quick replies --------------------------
 
