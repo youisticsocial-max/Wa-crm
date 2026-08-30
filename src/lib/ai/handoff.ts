@@ -177,70 +177,75 @@ export function buildHandoffSummary(args: {
  */
 export function buildBridgeMessage(messages: ChatMessage[]): string {
   const brief = extractHandoffBrief(messages)
-  const isHindi = /samajh|aap|karne|karna|taki|hai|hoga|karein|bhi|nahi|chaiye|chahiye|din|din me|hum|hume|ho/i.test(
-    messages.map((m) => m.content).join(' '),
-  )
+  const userText = messages.filter((m) => m.role === 'user').map((m) => m.content).join(' ')
+  const isHindi = /\b(samajh|aap|karne|karna|taki|hai|hoga|karein|bhi|nahi|chaiye|chahiye|din|hum|hume|ho|kisi|mujhe)\b/i.test(userText)
+  const hasDevanagariCustomer = /[\u0900-\u097F]/.test(userText)
 
-  if (isHindi) {
-    const blocks: string[] = ['Samajh gaya 👍']
+  if (isHindi || hasDevanagariCustomer) {
+    if (!hasDevanagariCustomer) {
+      // Roman Hinglish
+      const blocks: string[] = ['Samajh gaya 👍']
 
-    if (brief.service === 'Custom ERP' && brief.need) {
-      blocks.push(
-        `Aapko ${brief.need} ke liye custom ERP requirement hai${
-          brief.timeline ? `, aur timeline ${brief.timeline} ki hai` : ''
-        }.`,
-      )
-    } else if (brief.need) {
-      blocks.push(
-        `Aapko ${brief.need} ke liye solution requirement hai${
-          brief.timeline ? `, aur timeline ${brief.timeline} ki hai` : ''
-        }.`,
-      )
+      const needSummary = brief.need
+        ? `Aapko ${brief.need} ke liye ${brief.service || 'custom solution'} chahiye.`
+        : 'Aapki requirement note kar li gayi hai.'
+      blocks.push(needSummary)
+
+      const bullets: string[] = []
+      if (brief.timeline) bullets.push(`• Timeline: ${brief.timeline}`)
+      if (brief.budget) bullets.push(`• Budget: ${brief.budget}`)
+      if (bullets.length > 0) {
+        blocks.push(bullets.join('\n'))
+      }
+
+      if (brief.reason === 'Refund / complaint escalation') {
+        blocks.push('Main aapki chat senior agent ko transfer kar raha hoon taaki issue ko jald resolve kiya ja sake.')
+      } else {
+        blocks.push('Main requirement team ko forward kar raha hoon taki wo final feasibility aur cost confirm kar saken.')
+      }
+
+      return blocks.join('\n\n')
     } else {
-      blocks.push(`Aapki requirement note kar li gayi hai.`)
-    }
+      // Devanagari Hindi
+      const blocks: string[] = ['समझ गया 👍']
 
-    if (brief.timeline || brief.budget) {
-      blocks.push(
-        `Tight timeline ya budget requirement me exact commitment se pehle hume scope aur feasibility check karni hoti hai.`,
-      )
-    }
+      const needSummary = brief.need
+        ? `आपको ${brief.need} के लिए ${brief.service || 'कस्टम समाधान'} चाहिए।`
+        : 'आपकी आवश्यकता दर्ज कर ली गई है।'
+      blocks.push(needSummary)
 
-    if (brief.reason === 'Refund / complaint escalation') {
-      blocks.push(
-        `Main aapki chat senior agent ko transfer kar raha hoon taaki issue ko jald resolve kiya ja sake.`,
-      )
-    } else {
-      blocks.push(
-        `Main requirement team ko forward kar raha hoon taki wo final estimate aur availability confirm kar saken.`,
-      )
-    }
+      const bullets: string[] = []
+      if (brief.timeline) bullets.push(`• समय सीमा: ${brief.timeline}`)
+      if (brief.budget) bullets.push(`• बजट: ${brief.budget}`)
+      if (bullets.length > 0) {
+        blocks.push(bullets.join('\n'))
+      }
 
-    return blocks.join('\n\n')
+      blocks.push('मैं आपकी विवरण टीम को भेज रहा हूँ ताकि वे अंतिम पुष्टि कर सकें।')
+
+      return blocks.join('\n\n')
+    }
   }
 
+  // English
   const blocks: string[] = ['Got it 👍']
 
-  if (brief.service === 'Custom ERP' && brief.need) {
-    blocks.push(
-      `I have noted your requirements for ${brief.need}${
-        brief.timeline ? ` with a timeline of ${brief.timeline}` : ''
-      }.`,
-    )
-  } else if (brief.need) {
-    blocks.push(`I have noted your requirement: ${brief.need}.`)
-  } else {
-    blocks.push(`Your request has been recorded.`)
+  const needSummary = brief.need
+    ? `I have noted your requirement for ${brief.need}.`
+    : 'Your request has been recorded.'
+  blocks.push(needSummary)
+
+  const bullets: string[] = []
+  if (brief.timeline) bullets.push(`• Timeline: ${brief.timeline}`)
+  if (brief.budget) bullets.push(`• Budget: ${brief.budget}`)
+  if (bullets.length > 0) {
+    blocks.push(bullets.join('\n'))
   }
 
   if (brief.reason === 'Refund / complaint escalation') {
-    blocks.push(
-      `I am transferring your thread to a senior support agent right now to resolve this.`,
-    )
+    blocks.push('I am transferring your thread to a senior support agent right now to resolve this.')
   } else {
-    blocks.push(
-      `I am forwarding your details to our team so they can review the scope and confirm exact pricing and timeline.`,
-    )
+    blocks.push('I am forwarding your details to our team so they can review the scope and confirm exact pricing and timeline.')
   }
 
   return blocks.join('\n\n')

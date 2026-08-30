@@ -5,6 +5,7 @@ import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
 import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary, buildBridgeMessage } from './handoff'
+import { sanitizeReplyScript, formatWhatsAppMessage } from './sanitize'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
@@ -98,12 +99,13 @@ export async function dispatchInboundToAiReply(
       return
     }
 
+    const customerText = latestUserMessage(messages)
     // Ground the reply in the account's knowledge base (best-effort).
     const knowledge = await retrieveKnowledge(
       db,
       accountId,
       config,
-      latestUserMessage(messages),
+      customerText,
     )
 
     const systemPrompt = buildSystemPrompt({
@@ -134,7 +136,8 @@ export async function dispatchInboundToAiReply(
 
     if (handoff || !text) {
       // Ensure the customer gets a natural bridge message rather than an abrupt silence.
-      const bridgeText = text && text.trim() ? text.trim() : buildBridgeMessage(messages)
+      const rawBridge = text && text.trim() ? text.trim() : buildBridgeMessage(messages)
+      const bridgeText = formatWhatsAppMessage(sanitizeReplyScript(rawBridge, customerText))
       const hasBridge = Boolean(bridgeText)
 
       // The model can't (or shouldn't) answer — stop auto-replying on
@@ -179,6 +182,8 @@ export async function dispatchInboundToAiReply(
       return
     }
 
+    const replyText = formatWhatsAppMessage(sanitizeReplyScript(text, customerText))
+
     // Atomically claim a reply slot: the cap check + increment happen in
     // one UPDATE, so concurrent inbounds can never overshoot the cap. If
     // another inbound just took the last slot, `claimed` is false and we
@@ -206,7 +211,7 @@ export async function dispatchInboundToAiReply(
       userId: configOwnerUserId,
       conversationId,
       contactId,
-      text,
+      text: replyText,
       aiGenerated: true,
     })
   } catch (err) {
