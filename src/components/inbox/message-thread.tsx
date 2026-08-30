@@ -49,6 +49,7 @@ import {
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
+import { AiHandoffBrief } from "./ai-handoff-brief";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
 
@@ -1056,6 +1057,16 @@ export function MessageThread({
           </DropdownMenu>
         </div>
       </div>
+
+      {/* Mobile Pinned AI Handoff Brief */}
+      {conversation?.ai_handoff_summary && (
+        <div className="lg:hidden">
+          <AiHandoffBrief
+            summary={conversation.ai_handoff_summary}
+            variant="mobile"
+          />
+        </div>
+      )}
 
       {/* Messages Area */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">

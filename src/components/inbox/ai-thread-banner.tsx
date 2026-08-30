@@ -143,11 +143,6 @@ export function AiThreadBanner({
       <Banner tone="muted">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-foreground">{t("pausedTitle")}</p>
-          {handoffSummary && (
-            <div className="mt-1.5 whitespace-pre-wrap font-sans text-xs leading-relaxed text-muted-foreground">
-              {handoffSummary}
-            </div>
-          )}
         </div>
         <BannerButton onClick={() => toggle(false)} busy={busy} icon={Undo2}>
           {t("resume")}

@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import type { Contact, Deal, ContactNote, Tag } from "@/types";
+import type { Contact, Deal, ContactNote, Tag, Conversation } from "@/types";
+import { AiHandoffBrief } from "./ai-handoff-brief";
 import {
   Phone,
   Mail,
@@ -23,9 +24,10 @@ import { useTranslations } from "next-intl";
 
 interface ContactSidebarProps {
   contact: Contact | null;
+  conversation?: Conversation | null;
 }
 
-export function ContactSidebar({ contact }: ContactSidebarProps) {
+export function ContactSidebar({ contact, conversation }: ContactSidebarProps) {
   const tSidebar = useTranslations("Inbox.sidebar");
   const tThread = useTranslations("Inbox.messageThread");
 
@@ -253,6 +255,14 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />
+
+          {/* AI Handoff Brief */}
+          {conversation?.ai_handoff_summary && (
+            <>
+              <AiHandoffBrief summary={conversation.ai_handoff_summary} variant="desktop" />
+              <div className="my-4 border-t border-border" />
+            </>
+          )}
 
           {/* Notes */}
           <div>
