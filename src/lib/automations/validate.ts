@@ -78,6 +78,8 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
     case 'remove_tag':
       if (!nonEmpty(c.tag_id)) {
         issues.push({ path: `${path}.tag_id`, message: 'tag is required' })
+      } else if (!isUuid(String(c.tag_id))) {
+        issues.push({ path: `${path}.tag_id`, message: 'tag must be selected from the list (invalid id)' })
       }
       break
     case 'assign_conversation':
@@ -205,4 +207,8 @@ export function validateTriggerForActivation(
 
 function nonEmpty(v: unknown): boolean {
   return typeof v === 'string' && v.trim().length > 0
+}
+
+function isUuid(s: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)
 }

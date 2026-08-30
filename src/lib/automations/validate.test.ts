@@ -23,7 +23,7 @@ describe("validateStepsForActivation", () => {
         step_type: "wait",
         step_config: { amount: 5, unit: "minutes" },
       },
-      { step_type: "add_tag", step_config: { tag_id: "tag-uuid" } },
+      { step_type: "add_tag", step_config: { tag_id: "11111111-2222-3333-4444-555555555555" } },
       { step_type: "close_conversation", step_config: {} },
     ]);
     expect(issues).toEqual([]);

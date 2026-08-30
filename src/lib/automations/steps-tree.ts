@@ -33,24 +33,11 @@ const uid = () =>
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2) + Date.now().toString(36)
 
-export async function replaceSteps(
+export function buildInsertRows(
   automationId: string,
   input: BuilderStepInput[],
-): Promise<string | null> {
-  const admin = supabaseAdmin()
-  const { error: delErr } = await admin
-    .from('automation_steps')
-    .delete()
-    .eq('automation_id', automationId)
-  if (delErr) return delErr.message
-  return insertSteps(automationId, input)
-}
-
-export async function insertSteps(
-  automationId: string,
-  input: BuilderStepInput[],
-): Promise<string | null> {
-  if (!input || input.length === 0) return null
+): InsertRow[] {
+  if (!input || input.length === 0) return []
 
   const looksFlat = input.some(
     (s) => s.branch !== undefined || s.parent_index !== undefined,
@@ -81,7 +68,43 @@ export async function insertSteps(
     })
   }
   walk(tree, null, null)
+  return rows
+}
 
+export async function replaceSteps(
+  automationId: string,
+  input: BuilderStepInput[],
+): Promise<string | null> {
+  const admin = supabaseAdmin()
+  const rows = buildInsertRows(automationId, input)
+
+  const { error: rpcErr } = await admin.rpc('replace_automation_steps', {
+    p_automation_id: automationId,
+    p_steps: rows as unknown as Record<string, unknown>[],
+  })
+
+  if (!rpcErr) return null
+
+  // Fallback to legacy delete+insert if RPC is not yet installed in database
+  if (rpcErr.code === 'PGRST202' || rpcErr.message.includes('Could not find the function')) {
+    const { error: delErr } = await admin
+      .from('automation_steps')
+      .delete()
+      .eq('automation_id', automationId)
+    if (delErr) return delErr.message
+    if (rows.length === 0) return null
+    const { error: insErr } = await admin.from('automation_steps').insert(rows)
+    return insErr?.message ?? null
+  }
+
+  return rpcErr.message
+}
+
+export async function insertSteps(
+  automationId: string,
+  input: BuilderStepInput[],
+): Promise<string | null> {
+  const rows = buildInsertRows(automationId, input)
   if (rows.length === 0) return null
   const { error } = await supabaseAdmin().from('automation_steps').insert(rows)
   return error?.message ?? null
