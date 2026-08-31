@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { parseSummary } from "./ai-handoff-brief";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AiHandoffBrief, parseSummary } from "./ai-handoff-brief";
+
+const SUMMARY = `ðŸ¤– AI agent handed off (after 1 reply):
+Need: Header color change
+Handoff reason: Exact delivery confirmation required`;
 
 describe("parseSummary", () => {
   it("returns null for null, undefined, or empty summary", () => {
@@ -42,5 +48,51 @@ Handoff reason: Complex query needing human assistance`;
     expect(parsed?.items).toHaveLength(1);
     expect(parsed?.items[0]).toEqual({ label: "Handoff reason", value: "Complex query needing human assistance" });
     expect(parsed?.previewText).toBe("Handoff reason: Complex query needing human assistance");
+  });
+});
+
+describe("AiHandoffBrief state labeling", () => {
+  it("labels a resumed brief as previous and collapses its details", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiHandoffBrief, {
+        summary: SUMMARY,
+        variant: "desktop",
+        historical: true,
+      }),
+    );
+
+    expect(html).toContain("Previous AI Handoff Brief");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("Header color change");
+  });
+
+  it("shows a fresh paused handoff as active and expanded", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiHandoffBrief, {
+        summary: SUMMARY,
+        variant: "desktop",
+        historical: false,
+      }),
+    );
+
+    expect(html).toContain("AI Handoff Brief");
+    expect(html).not.toContain("Previous AI Handoff Brief");
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain("Header color change");
+  });
+
+  it("uses the same historical distinction in the mobile brief", () => {
+    const html = renderToStaticMarkup(
+      createElement(AiHandoffBrief, {
+        summary: SUMMARY,
+        variant: "mobile",
+        historical: true,
+      }),
+    );
+
+    expect(html).toContain("Previous AI Brief");
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain("View brief");
+    expect(html).not.toContain("Handoff reason:");
   });
 });

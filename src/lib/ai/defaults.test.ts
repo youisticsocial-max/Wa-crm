@@ -22,4 +22,23 @@ describe('auto-reply system prompt', () => {
     expect(prompt).toContain('refund or dispute')
     expect(prompt).toContain('explicit request for a human')
   })
+
+  it('makes a later change/delivery/training burst dominate an older unrelated inquiry', () => {
+    const currentBurst = [
+      'Header blue karna hai.',
+      'Delivery kitne din me hogi?',
+      'Mere bete ko use karna sikhana hai.',
+    ]
+    const prompt = buildSystemPrompt({
+      userPrompt: null,
+      mode: 'auto_reply',
+      currentCustomerBurst: currentBurst,
+    })
+
+    expect(prompt).toContain('HIGHEST PRIORITY')
+    expect(prompt).toContain('Never carry an unrelated older project')
+    expect(prompt).toContain('existing-project request')
+    expect(prompt).toContain(JSON.stringify(currentBurst))
+    expect(prompt).not.toContain('Mobile app banana hai')
+  })
 })

@@ -1064,6 +1064,7 @@ export function MessageThread({
           <AiHandoffBrief
             summary={conversation.ai_handoff_summary}
             variant="mobile"
+            historical={!(conversation.ai_autoreply_disabled ?? false)}
           />
         </div>
       )}

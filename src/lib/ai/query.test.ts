@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { latestUserMessage } from './query'
+import { latestCustomerBurst, latestUserMessage } from './query'
 
 describe('latestUserMessage', () => {
   it('returns the most recent user turn', () => {
@@ -20,5 +20,24 @@ describe('latestUserMessage', () => {
 
   it('returns empty string for no messages', () => {
     expect(latestUserMessage([])).toBe('')
+  })
+})
+
+describe('latestCustomerBurst', () => {
+  it('keeps older history but isolates the latest consecutive customer intent', () => {
+    const messages = [
+      { role: 'user' as const, content: 'Mobile app banana hai, kya costing ayegi?' },
+      { role: 'assistant' as const, content: 'Please share the app scope.' },
+      { role: 'user' as const, content: 'Header blue karna hai.' },
+      { role: 'user' as const, content: 'Delivery kitne din me hogi?' },
+      { role: 'user' as const, content: 'Mere bete ko use karna sikhana hai.' },
+    ]
+
+    expect(latestCustomerBurst(messages)).toEqual([
+      'Header blue karna hai.',
+      'Delivery kitne din me hogi?',
+      'Mere bete ko use karna sikhana hai.',
+    ])
+    expect(messages[0].content).toContain('Mobile app')
   })
 })

@@ -7,7 +7,7 @@ import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary, buildBridgeMessage } from './handoff'
 import { sanitizeReplyScript, formatWhatsAppMessage } from './sanitize'
 import { logAiUsage } from './usage'
-import { latestUserMessage } from './query'
+import { latestCustomerBurst, latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 
@@ -80,7 +80,8 @@ export async function dispatchInboundToAiReply(
       return
     }
 
-    const customerText = latestUserMessage(messages)
+    const currentBurst = latestCustomerBurst(messages)
+    const customerText = currentBurst.join('\n') || latestUserMessage(messages)
     // Ground the reply in the account's knowledge base (best-effort).
     const knowledge = await retrieveKnowledge(
       db,
@@ -93,6 +94,7 @@ export async function dispatchInboundToAiReply(
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      currentCustomerBurst: currentBurst,
     })
 
     const { text, handoff, usage } = await generateReply({

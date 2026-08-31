@@ -259,7 +259,11 @@ export function ContactSidebar({ contact, conversation }: ContactSidebarProps) {
           {/* AI Handoff Brief */}
           {conversation?.ai_handoff_summary && (
             <>
-              <AiHandoffBrief summary={conversation.ai_handoff_summary} variant="desktop" />
+              <AiHandoffBrief
+                summary={conversation.ai_handoff_summary}
+                variant="desktop"
+                historical={!(conversation.ai_autoreply_disabled ?? false)}
+              />
               <div className="my-4 border-t border-border" />
             </>
           )}
