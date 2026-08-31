@@ -136,7 +136,6 @@ export async function dispatchInboundToAiReply(
         hasBridgeMessage: hasBridge,
       })
       const update: Record<string, unknown> = {
-        ai_autoreply_disabled: true,
         ai_handoff_summary: summary,
       }
       // Only set the assignee when a target is configured AND the thread

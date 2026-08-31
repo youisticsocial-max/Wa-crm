@@ -262,7 +262,7 @@ export function ContactSidebar({ contact, conversation }: ContactSidebarProps) {
               <AiHandoffBrief
                 summary={conversation.ai_handoff_summary}
                 variant="desktop"
-                historical={!(conversation.ai_autoreply_disabled ?? false)}
+                historical={!(conversation.ai_autoreply_disabled || conversation.assigned_agent_id)}
               />
               <div className="my-4 border-t border-border" />
             </>
