@@ -217,6 +217,11 @@ export function SettingsOverview({
       loading: false,
       subtitle: t('appearance', { mode: cap(mode), theme: themeName }),
     },
+    {
+      section: 'notifications',
+      loading: false,
+      subtitle: 'Desktop & mobile push',
+    },
   ];
 
   return (
