@@ -10,6 +10,7 @@ import { logAiUsage } from './usage'
 import { latestCustomerBurst, latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { sendPushToUser, sendPushToQueue } from '@/lib/push/send'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -144,6 +145,29 @@ export async function dispatchInboundToAiReply(
         update.assigned_agent_id = config.handoffAgentId
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      // Send push notification for handoff
+      const targetAgentId = config.handoffAgentId && !conv.assigned_agent_id 
+        ? config.handoffAgentId 
+        : conv.assigned_agent_id
+      
+      const pushPayload = {
+        title: 'Human review needed',
+        body: 'Customer needs human confirmation',
+        type: 'ai_handoff',
+        conversationId: conversationId,
+        url: `/inbox?c=${conversationId}`,
+        tag: `ai-handoff-${conversationId}`,
+        requireInteraction: true,
+        renotify: true,
+      }
+      
+      if (targetAgentId) {
+        await sendPushToUser(db, targetAgentId, pushPayload)
+      } else {
+        await sendPushToQueue(db, accountId, pushPayload)
+      }
+
       if (bridgeText) {
         await engineSendText({
           accountId,

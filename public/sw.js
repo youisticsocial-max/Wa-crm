@@ -61,6 +61,9 @@ self.addEventListener('push', (event) => {
       data: {
         url: data.url || '/inbox',
       },
+      tag: data.tag,
+      requireInteraction: data.requireInteraction,
+      renotify: data.renotify,
     };
 
     event.waitUntil(self.registration.showNotification(title, options));

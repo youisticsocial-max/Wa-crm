@@ -18,6 +18,7 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import { sendPushToUser, sendPushToQueue } from '@/lib/push/send'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -889,6 +890,22 @@ async function processMessage(
     content_type: contentType,
     text: contentText,
   })
+
+  // Send web push notification
+  const pushPayload = {
+    title: 'New WhatsApp message',
+    body: `New message from ${contactName}`,
+    type: 'inbound_message',
+    conversationId: conversation.id,
+    url: `/inbox?c=${conversation.id}`,
+    tag: `inbound-${conversation.id}`,
+  }
+
+  if (conversation.assigned_agent_id) {
+    await sendPushToUser(supabaseAdmin(), conversation.assigned_agent_id, pushPayload)
+  } else {
+    await sendPushToQueue(supabaseAdmin(), accountId, pushPayload)
+  }
 }
 
 async function parseMessageContent(
