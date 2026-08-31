@@ -33,7 +33,6 @@ interface DispatchArgs {
  *   - AI off / auto-reply disabled for the account
  *   - a human agent is assigned (they own the thread)
  *   - auto-reply was disabled for this conversation (prior handoff)
- *   - the per-conversation reply cap is reached
  *   - there's nothing to reply to
  *
  * The 24h WhatsApp session window is inherently open here — we're
@@ -51,23 +50,9 @@ export async function dispatchInboundToAiReply(
     const config = await loadAiConfig(db, accountId)
     if (!config || !config.autoReplyEnabled) return
 
-    // Deterministic, user-configured responders win over the LLM — the
-    // caller already excludes messages a Flow consumed. Message-level
-    // automations (`new_message_received` / `keyword_match`) are
-    // dispatched independently for this same inbound and may send their
-    // own reply, so if the account has any active one we stand down to
-    // avoid double-texting the customer. (Relationship triggers like
-    // `first_inbound_message` don't count — they're not per-message
-    // auto-responders.)
-    const { data: autoResponders } = await db
-      .from('automations')
-      .select('id')
-      .eq('account_id', accountId)
-      .eq('is_active', true)
-      .in('trigger_type', ['new_message_received', 'keyword_match'])
-      .limit(1)
-    if (autoResponders && autoResponders.length > 0) return
-
+    // The webhook has already given deterministic flows/automations first
+    // refusal and atomically claimed the latest debounce generation. Recheck
+    // ownership here because a human may take over during the 8-second wait.
     const { data: conv, error: convErr } = await db
       .from('conversations')
       .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
@@ -76,18 +61,14 @@ export async function dispatchInboundToAiReply(
     if (convErr || !conv) return
     if (conv.assigned_agent_id) return // a human owns this thread
     if (conv.ai_autoreply_disabled) return // handed off / turned off here
-    // Cheap early-out; the authoritative cap check is the atomic claim
-    // below (this read can race a concurrent inbound).
-    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
-
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
 
-    // Account-wide throttle on the shared BYO key. The per-conversation
-    // cap bounds one thread; this bounds a burst across many threads (a
-    // marketing blast landing 200 replies at once) so we never run the
+    // Account-wide throttle on the shared BYO key. Durable inbound
+    // debounce bounds one thread; this bounds a burst across many threads
+    // (a marketing blast landing 200 replies at once) so we never run the
     // owner's key past the provider's rate limit. Over the limit → skip
-    // the auto-reply; the inbound still sits in the inbox for a human.
+    // this dispatch; a later inbound can schedule another one.
     const acctLimit = checkRateLimit(
       `ai-autoreply:${accountId}`,
       RATE_LIMITS.aiAutoReplyAccount,
@@ -163,48 +144,20 @@ export async function dispatchInboundToAiReply(
       }
       await db.from('conversations').update(update).eq('id', conversationId)
       if (bridgeText) {
-        const { data: claimed } = await db.rpc('claim_ai_reply_slot', {
-          conversation_id: conversationId,
-          max_replies: config.autoReplyMaxPerConversation,
+        await engineSendText({
+          accountId,
+          userId: configOwnerUserId,
+          conversationId,
+          contactId,
+          text: bridgeText,
+          aiGenerated: true,
         })
-
-        if (claimed === true) {
-          await engineSendText({
-            accountId,
-            userId: configOwnerUserId,
-            conversationId,
-            contactId,
-            text: bridgeText,
-            aiGenerated: true,
-          })
-        }
+        await recordAiReplySent(db, conversationId)
       }
       return
     }
 
     const replyText = formatWhatsAppMessage(sanitizeReplyScript(text, customerText))
-
-    // Atomically claim a reply slot: the cap check + increment happen in
-    // one UPDATE, so concurrent inbounds can never overshoot the cap. If
-    // another inbound just took the last slot, `claimed` is false and we
-    // skip the send. (We consume a slot slightly before the send lands —
-    // fail-safe: under-reply rather than over-reply.)
-    const { data: claimed, error: claimErr } = await db.rpc(
-      'claim_ai_reply_slot',
-      {
-        conversation_id: conversationId,
-        max_replies: config.autoReplyMaxPerConversation,
-      },
-    )
-    if (claimErr) {
-      // A real error here (vs. losing the cap race) is almost always a
-      // deploy issue — e.g. `claim_ai_reply_slot` not EXECUTE-able by the
-      // service role, or the migration not applied. Log it loudly: a
-      // silent return makes "auto-reply never fires" undiagnosable.
-      console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
-      return
-    }
-    if (claimed !== true) return // lost the per-conversation cap race
 
     await engineSendText({
       accountId,
@@ -214,7 +167,20 @@ export async function dispatchInboundToAiReply(
       text: replyText,
       aiGenerated: true,
     })
+    await recordAiReplySent(db, conversationId)
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
+  }
+}
+
+async function recordAiReplySent(
+  db: ReturnType<typeof supabaseAdmin>,
+  conversationId: string,
+): Promise<void> {
+  const { error } = await db.rpc('record_ai_reply_sent', {
+    target_conversation_id: conversationId,
+  })
+  if (error) {
+    console.warn('[ai auto-reply] failed to record sent reply:', error)
   }
 }

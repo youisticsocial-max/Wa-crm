@@ -463,29 +463,6 @@ export function AiConfig() {
               />
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <Label htmlFor="ai-max">{t('maxAutoReplies')}</Label>
-                <p className="text-xs text-muted-foreground">
-                  {t('maxAutoRepliesDesc')}
-                </p>
-              </div>
-              <Input
-                id="ai-max"
-                type="number"
-                min={1}
-                max={20}
-                value={maxPerConversation}
-                onChange={(e) =>
-                  setMaxPerConversation(
-                    Math.min(20, Math.max(1, Number(e.target.value) || 1)),
-                  )
-                }
-                disabled={disabled || !autoReplyEnabled}
-                className="w-20"
-              />
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="ai-handoff">{t('handoffTo')}</Label>
               <p className="text-xs text-muted-foreground">

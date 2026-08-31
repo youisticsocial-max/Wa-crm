@@ -8,6 +8,11 @@ import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
+import { shouldScheduleInboundAi } from '@/lib/ai/inbound-eligibility'
+import {
+  cancelAiDispatch,
+  deferAiDispatch,
+} from '@/lib/ai/inbound-debounce'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
   handleTemplateWebhookChange,
@@ -761,6 +766,22 @@ async function processMessage(
     | 'keyword_match'
     | 'interactive_reply'
   )[] = []
+
+  // Automations are awaited below, which lets us detect whether one
+  // actually sent a deterministic reply for this inbound. This is more
+  // precise than globally muting AI whenever any responder automation
+  // exists in the account: a one-time welcome can coexist with AI, and a
+  // keyword automation suppresses AI only on messages it really handles.
+  let botMessagesBeforeAutomations = 0
+  if (!flowConsumed) {
+    const { count } = await supabaseAdmin()
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('conversation_id', conversation.id)
+      .eq('sender_type', 'bot')
+      .eq('ai_generated', false)
+    botMessagesBeforeAutomations = count ?? 0
+  }
   // Content-level triggers are suppressed when a flow consumed the
   // message — see the comment block above.
   if (!flowConsumed) {
@@ -800,18 +821,58 @@ async function processMessage(
     }
   }
 
+  let deterministicAutomationReplied = false
+  if (!flowConsumed && automationTriggers.length > 0) {
+    const { count } = await supabaseAdmin()
+      .from('messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('conversation_id', conversation.id)
+      .eq('sender_type', 'bot')
+      .eq('ai_generated', false)
+    deterministicAutomationReplied = (count ?? 0) > botMessagesBeforeAutomations
+  }
+
   // AI auto-reply. Runs only for plain-text inbound the deterministic
   // flow runner did NOT consume (flows win over the LLM), and only when
   // the account has enabled it. Awaited inside `after()` (same reason as
   // the webhook dispatch below); `dispatchInboundToAiReply` owns its
   // eligibility gates + try/catch and never throws.
-  if (!flowConsumed && !interactiveReplyId && inboundText.trim()) {
-    await dispatchInboundToAiReply({
-      accountId,
+  if (shouldScheduleInboundAi({
+    flowConsumed,
+    deterministicAutomationReplied,
+    interactiveReply: Boolean(interactiveReplyId),
+    inboundText,
+  })) {
+    // Nested after() is supported by Next.js and registers this promise
+    // with Vercel's waitUntil primitive. The database version/due-time
+    // state is the source of truth; process memory holds no debounce
+    // ownership. Newer inbounds supersede this version atomically.
+    await deferAiDispatch({
+      db: supabaseAdmin(),
       conversationId: conversation.id,
-      contactId: contactRecord.id,
-      configOwnerUserId,
+      defer: (work) => after(async () => {
+        try {
+          await work()
+        } catch (err) {
+          console.error('[ai debounce] delayed dispatch failed:', err)
+        }
+      }),
+      dispatch: () => dispatchInboundToAiReply({
+        accountId,
+        conversationId: conversation.id,
+        contactId: contactRecord.id,
+        configOwnerUserId,
+      }),
     })
+  } else if (inboundText.trim()) {
+    // A flow, interactive handler, or deterministic automation handled
+    // this newer inbound. Supersede any older pending AI waiter so it
+    // cannot wake up and double-text after that deterministic response.
+    try {
+      await cancelAiDispatch(supabaseAdmin(), conversation.id)
+    } catch (err) {
+      console.error('[ai debounce] failed to cancel pending dispatch:', err)
+    }
   }
 
   // message.received webhook (public API). Awaited — not fire-and-forget
