@@ -16,6 +16,7 @@ import type {
   UpdateContactFieldStepConfig,
   WaitStepConfig,
   CreateDealStepConfig,
+  UpdateDealStageStepConfig,
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
@@ -551,29 +552,71 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'create_deal': {
       const cfg = step.step_config as CreateDealStepConfig
       if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('create_deal needs pipeline + stage')
-      // Match the account's configured default currency rather than
-      // the static `deals.currency` DB default — keeps automation-
-      // created deals consistent with the one-currency-per-account
-      // rule (issue #218). Fall back to USD if the row is somehow
-      // missing the value (pre-021 forks).
+      
       const { data: acct } = await db
         .from('accounts')
         .select('default_currency')
         .eq('id', args.automation.account_id)
         .maybeSingle()
-      await db.from('deals').insert({
-        // Tenancy + audit, same split as automation_logs above.
-        account_id: args.automation.account_id,
-        user_id: args.automation.user_id,
-        pipeline_id: cfg.pipeline_id,
-        stage_id: cfg.stage_id,
-        contact_id: args.contactId,
-        title: interpolate(cfg.title, args),
-        value: cfg.value ?? 0,
-        currency: acct?.default_currency ?? 'USD',
-        status: 'open',
+
+      const { data, error } = await db.rpc('ensure_active_deal', {
+        p_account_id: args.automation.account_id,
+        p_user_id: args.automation.user_id,
+        p_pipeline_id: cfg.pipeline_id,
+        p_stage_id: cfg.stage_id,
+        p_contact_id: args.contactId,
+        p_conversation_id: args.context.conversation_id || null,
+        p_title: interpolate(cfg.title, args),
+        p_value: cfg.value ?? 0,
+        p_currency: acct?.default_currency ?? 'USD'
       })
+
+      if (error) {
+        throw new Error(`ensure_active_deal failed: ${error.message}`)
+      }
+
+      const res = data as unknown as { deal_id: string; is_new: boolean }[]
+      if (res && res.length > 0 && !res[0].is_new) {
+        return 'deal reused'
+      }
+
       return 'deal created'
+    }
+
+    case 'update_deal_stage': {
+      const cfg = step.step_config as UpdateDealStageStepConfig
+      if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('update_deal_stage needs pipeline + stage')
+
+      // Query for the active deal
+      const { data: activeDeal, error: findErr } = await db
+        .from('deals')
+        .select('id')
+        .eq('account_id', args.automation.account_id)
+        .eq('pipeline_id', cfg.pipeline_id)
+        .eq('contact_id', args.contactId)
+        .not('status', 'in', '("won","lost")')
+        .limit(1)
+        .maybeSingle()
+
+      if (findErr) throw new Error(`failed to query active deal: ${findErr.message}`)
+      
+      if (!activeDeal) {
+        // Safe no-op as per plan Option A
+        return 'no active deal found, skipped'
+      }
+
+      // Update the stage
+      const { error: updErr } = await db
+        .from('deals')
+        .update({
+          stage_id: cfg.stage_id,
+          conversation_id: args.context.conversation_id || undefined,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', activeDeal.id)
+
+      if (updErr) throw new Error(`failed to update deal stage: ${updErr.message}`)
+      return 'deal stage updated'
     }
 
     case 'send_webhook': {

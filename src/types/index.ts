@@ -451,6 +451,7 @@ export type AutomationStepType =
   | 'assign_conversation'
   | 'update_contact_field'
   | 'create_deal'
+  | 'update_deal_stage'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -645,4 +646,9 @@ export interface QuickReply {
   interactive_payload?: InteractiveMessagePayload | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface UpdateDealStageStepConfig {
+  pipeline_id: string;
+  stage_id: string;
 }

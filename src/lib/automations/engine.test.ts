@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
     updateCalls: [] as { table: string; filters: [string, string, unknown][] }[],
     upsertCalls: [] as { table: string; payload: unknown }[],
     logUpdates: [] as Record<string, unknown>[],
+    rpcCalls: [] as { name: string; args: unknown }[],
+    activeDealMock: null as { id: string } | null,
   },
 }));
 
@@ -54,6 +56,13 @@ vi.mock("./admin-client", () => {
       return { data: { steps_executed: [], status: "success" }, error: null };
     }
     if (table === "automation_steps") return { data: state.steps, error: null };
+    if (table === "deals") {
+      if (type === "select") return { data: state.activeDealMock, error: null };
+      if (type === "update") {
+        state.updateCalls.push({ table, filters: ops.filters });
+        return { data: null, error: null };
+      }
+    }
     return { data: null, error: null };
   }
 
@@ -75,6 +84,7 @@ vi.mock("./admin-client", () => {
       is: () => b,
       order: () => b,
       limit: () => b,
+      not: () => b,
       single: () => Promise.resolve(resolve(ops)),
       maybeSingle: () => Promise.resolve(resolve(ops)),
       then: (onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) =>
@@ -89,7 +99,11 @@ vi.mock("./admin-client", () => {
         state.fromCalls.push(t);
         return builder(t);
       },
-      rpc: () => Promise.resolve({ error: null }),
+      rpc: (name: string, args: unknown) => {
+        state.rpcCalls.push({ name, args });
+        if (name === "ensure_active_deal") return Promise.resolve({ data: [{ deal_id: "deal-1", is_new: true }], error: null });
+        return Promise.resolve({ error: null });
+      },
     }),
   };
 });
@@ -114,6 +128,8 @@ beforeEach(() => {
   h.state.updateCalls = [];
   h.state.upsertCalls = [];
   h.state.logUpdates = [];
+  h.state.rpcCalls = [];
+  h.state.activeDealMock = null;
 });
 
 describe("runAutomationsForTrigger — tenant isolation", () => {
@@ -402,5 +418,58 @@ describe("tag_added — conversation policy", () => {
       status: "failed",
       error_message: "tag_added automation cannot send: contact has no existing conversation",
     }));
+  });
+});
+
+
+describe("runAutomationsForTrigger � pipeline deals", () => {
+  it("create_deal calls ensure_active_deal RPC", async () => {
+    h.state.owned = { id: "contact-1" };
+    h.state.automations = [
+      { id: "auto-1", account_id: ACCOUNT, user_id: "u1", trigger_event: "first_inbound_message", is_active: true }
+    ];
+    h.state.steps = [
+      { id: "step-1", automation_id: "auto-1", position: 0, step_type: "create_deal", step_config: { pipeline_id: "p1", stage_id: "s1", title: "New Deal" } }
+    ];
+
+    await runAutomationsForTrigger({ accountId: ACCOUNT, contactId: "contact-1", triggerType: "first_inbound_message", context: { conversation_id: "conv-1" } });
+
+    const rpcCall = h.state.rpcCalls.find((c) => c.name === "ensure_active_deal");
+    expect(rpcCall).toBeDefined();
+    expect((rpcCall?.args as any).p_pipeline_id).toBe("p1");
+    expect((rpcCall?.args as any).p_conversation_id).toBe("conv-1");
+  });
+
+  it("update_deal_stage updates the active deal", async () => {
+    h.state.owned = { id: "contact-1" };
+    h.state.activeDealMock = { id: "deal-1" };
+    h.state.automations = [
+      { id: "auto-1", account_id: ACCOUNT, user_id: "u1", trigger_event: "tag_added", is_active: true }
+    ];
+    h.state.steps = [
+      { id: "step-1", automation_id: "auto-1", position: 0, step_type: "update_deal_stage", step_config: { pipeline_id: "p1", stage_id: "s2" } }
+    ];
+
+    await runAutomationsForTrigger({ accountId: ACCOUNT, contactId: "contact-1", triggerType: "tag_added", context: { conversation_id: "conv-2" } });
+
+    const updateCall = h.state.updateCalls.find((c) => c.table === "deals");
+    expect(updateCall).toBeDefined();
+    expect(updateCall?.filters).toContainEqual(["eq", "id", "deal-1"]);
+  });
+
+  it("update_deal_stage skips safely if no active deal", async () => {
+    h.state.owned = { id: "contact-1" };
+    h.state.activeDealMock = null;
+    h.state.automations = [
+      { id: "auto-1", account_id: ACCOUNT, user_id: "u1", trigger_event: "tag_added", is_active: true }
+    ];
+    h.state.steps = [
+      { id: "step-1", automation_id: "auto-1", position: 0, step_type: "update_deal_stage", step_config: { pipeline_id: "p1", stage_id: "s2" } }
+    ];
+
+    await runAutomationsForTrigger({ accountId: ACCOUNT, contactId: "contact-1", triggerType: "tag_added", context: { conversation_id: "conv-2" } });
+
+    const updateCall = h.state.updateCalls.find((c) => c.table === "deals");
+    expect(updateCall).toBeUndefined();
   });
 });
