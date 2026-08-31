@@ -182,7 +182,7 @@ export async function dispatchInboundToAiReply(
       return
     }
 
-    const replyText = formatWhatsAppMessage(sanitizeReplyScript(text, currentBurst))
+    const replyText = formatWhatsAppMessage(sanitizeReplyScript(text, customerText))
 
     await engineSendText({
       accountId,
