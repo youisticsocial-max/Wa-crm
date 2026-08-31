@@ -197,3 +197,90 @@ describe('dispatchInboundToAiReply — handoff', () => {
     })
   })
 })
+
+
+describe('dispatchInboundToAiReply — qualification auto-advance', () => {
+  const ARGS = {
+    accountId: 'acct-1',
+    conversationId: 'conv-1',
+    contactId: 'contact-1',
+    configOwnerUserId: 'user-1',
+  }
+
+  it('service + need + budget => New Lead moves to Qualified', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'I need a custom ERP for billing, my budget is $50k' }
+    ])
+    await dispatchInboundToAiReply(ARGS)
+    
+    const rpc = h.state.rpcCalls.find(c => c.name === 'advance_deal_stage_safely')
+    if (!rpc) console.log('RPC CALLS:', h.state.rpcCalls)
+    expect(rpc).toBeDefined()
+    expect(rpc.args.p_target_stage_name).toBe('Qualified')
+  })
+
+  it('service + need + timeline => moves to Qualified', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'I need a website for inventory ASAP' }
+    ])
+    await dispatchInboundToAiReply(ARGS)
+    
+    const rpc = h.state.rpcCalls.find(c => c.name === 'advance_deal_stage_safely')
+    expect(rpc).toBeDefined()
+    expect(rpc.args.p_target_stage_name).toBe('Qualified')
+  })
+
+  it('service only => no move', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'Tell me about Custom ERP' }
+    ])
+    await dispatchInboundToAiReply(ARGS)
+    const rpc = h.state.rpcCalls.find(c => c.name === 'advance_deal_stage_safely')
+    expect(rpc).toBeUndefined()
+  })
+
+  it('need only => no move', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'I need billing features' }
+    ])
+    await dispatchInboundToAiReply(ARGS)
+    const rpc = h.state.rpcCalls.find(c => c.name === 'advance_deal_stage_safely')
+    expect(rpc).toBeUndefined()
+  })
+
+  it('price question without numeric budget => no move', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'I need a Custom ERP for billing, what is the price?' }
+    ])
+    await dispatchInboundToAiReply(ARGS)
+    const rpc = h.state.rpcCalls.find(c => c.name === 'advance_deal_stage_safely')
+    expect(rpc).toBeUndefined()
+  })
+
+  it('vague timeline => no move', async () => {
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'I need a Custom ERP for billing sometime in the future' }
+    ])
+    await dispatchInboundToAiReply(ARGS)
+    const rpc = h.state.rpcCalls.find(c => c.name === 'advance_deal_stage_safely')
+    expect(rpc).toBeUndefined()
+  })
+
+  it('qualification evaluation failure does not block AI reply', async () => {
+    // We mock buildConversationContext to throw when extractHandoffBrief reads it?
+    // extractHandoffBrief is synchronous, but we can mock it to throw or just make db.rpc throw.
+    h.buildConversationContext.mockResolvedValue([
+      { role: 'user', content: 'I need a custom ERP for billing, my budget is $50k' }
+    ])
+    
+    // Simulate DB failure
+    const originalRpc = h.state.rpcCalls.push;
+    h.state.rpcCalls.push = () => { throw new Error('DB Down') };
+    
+    await dispatchInboundToAiReply(ARGS) // should not throw!
+    expect(h.engineSendText).toHaveBeenCalled()
+    
+    // restore
+    h.state.rpcCalls.push = originalRpc;
+  })
+})

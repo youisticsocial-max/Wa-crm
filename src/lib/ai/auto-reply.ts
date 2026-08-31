@@ -4,7 +4,7 @@ import { buildConversationContext } from './context'
 import { retrieveKnowledge } from './knowledge'
 import { generateReply } from './generate'
 import { buildSystemPrompt } from './defaults'
-import { buildHandoffSummary, buildBridgeMessage } from './handoff'
+import { buildHandoffSummary, buildBridgeMessage, extractHandoffBrief } from './handoff'
 import { sanitizeReplyScript, formatWhatsAppMessage } from './sanitize'
 import { logAiUsage } from './usage'
 import { latestCustomerBurst, latestUserMessage } from './query'
@@ -182,7 +182,7 @@ export async function dispatchInboundToAiReply(
       return
     }
 
-    const replyText = formatWhatsAppMessage(sanitizeReplyScript(text, customerText))
+    const replyText = formatWhatsAppMessage(sanitizeReplyScript(text, currentBurst))
 
     await engineSendText({
       accountId,
@@ -193,6 +193,21 @@ export async function dispatchInboundToAiReply(
       aiGenerated: true,
     })
     await recordAiReplySent(db, conversationId)
+
+    // Evaluate qualification silently
+    try {
+      const brief = extractHandoffBrief(messages)
+      if (brief.service && brief.need && (brief.budget || brief.timeline)) {
+        await db.rpc('advance_deal_stage_safely', {
+          p_account_id: accountId,
+          p_contact_id: contactId,
+          p_pipeline_name: 'Sales Pipeline',
+          p_target_stage_name: 'Qualified',
+        })
+      }
+    } catch (err) {
+      console.error('[ai auto-reply] qualification evaluation failed:', err)
+    }
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }
