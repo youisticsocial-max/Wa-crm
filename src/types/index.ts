@@ -437,6 +437,7 @@ export type AutomationTriggerType =
   | 'conversation_assigned'
   | 'tag_added'
   | 'time_based'
+  | 'template_sent'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
   | 'interactive_reply';
@@ -480,12 +481,18 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+export interface TemplateSentTriggerConfig {
+  /** Optional exact template name to trigger on. If absent, fires on any template sent. */
+  template_name?: string;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | TemplateSentTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {

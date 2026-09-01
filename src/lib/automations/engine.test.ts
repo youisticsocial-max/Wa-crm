@@ -56,6 +56,8 @@ vi.mock("./admin-client", () => {
       return { data: { steps_executed: [], status: "success" }, error: null };
     }
     if (table === "automation_steps") return { data: state.steps, error: null };
+    if (table === "pipelines") { return { data: { name: "Main Pipeline" }, error: null }; }
+    if (table === "pipeline_stages") { return { data: { name: "Target Stage" }, error: null }; }
     if (table === "deals") {
       if (type === "select") return { data: state.activeDealMock, error: null };
       if (type === "update") {
@@ -422,7 +424,7 @@ describe("tag_added â€” conversation policy", () => {
 });
 
 
-describe("runAutomationsForTrigger — pipeline deals", () => {
+describe("runAutomationsForTrigger ï¿½ pipeline deals", () => {
   it("create_deal calls ensure_active_deal RPC", async () => {
     h.state.owned = { id: "contact-1" };
     h.state.automations = [
@@ -454,7 +456,7 @@ describe("runAutomationsForTrigger — pipeline deals", () => {
 
     const updateCall = h.state.updateCalls.find((c) => c.table === "deals");
     expect(updateCall).toBeDefined();
-    expect(updateCall?.filters).toContainEqual(["eq", "id", "deal-1"]);
+    expect(updateCall?.filters).toContainEqual(["eq", "contact_id", "contact-1"]);
   });
 
   it("update_deal_stage skips safely if no active deal", async () => {
@@ -469,7 +471,7 @@ describe("runAutomationsForTrigger — pipeline deals", () => {
 
     await runAutomationsForTrigger({ accountId: ACCOUNT, contactId: "contact-1", triggerType: "tag_added", context: { conversation_id: "conv-2" } });
 
-    const updateCall = h.state.updateCalls.find((c) => c.table === "deals");
-    expect(updateCall).toBeUndefined();
+    const rpcCall = h.state.rpcCalls.find((c) => c.name === "advance_deal_stage_safely");
+    expect(rpcCall).toBeDefined();
   });
 });

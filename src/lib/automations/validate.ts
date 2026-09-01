@@ -208,6 +208,13 @@ export function validateTriggerForActivation(
         message: 'reply ids cannot be empty strings',
       })
     }
+  } else if (triggerType === 'template_sent') {
+    if (cfg.template_name !== undefined && !nonEmpty(cfg.template_name)) {
+      issues.push({
+        path: 'trigger.template_name',
+        message: 'template name cannot be empty if provided',
+      })
+    }
   }
 
   return issues

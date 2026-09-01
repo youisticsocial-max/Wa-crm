@@ -18,6 +18,7 @@ import type {
   CreateDealStepConfig,
   UpdateDealStageStepConfig,
   AssignConversationStepConfig,
+  TemplateSentTriggerConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
@@ -43,6 +44,12 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /** The name of the template sent, for template_sent trigger. */
+  template_name?: string
+  /** The language of the template sent, for template_sent trigger. */
+  template_language?: string
+  /** The Meta message ID for the sent message, for template_sent trigger. */
+  message_id?: string
 }
 
 export interface DispatchInput {
@@ -587,36 +594,54 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const cfg = step.step_config as UpdateDealStageStepConfig
       if (!cfg.pipeline_id || !cfg.stage_id) throw new Error('update_deal_stage needs pipeline + stage')
 
-      // Query for the active deal
-      const { data: activeDeal, error: findErr } = await db
-        .from('deals')
-        .select('id')
-        .eq('account_id', args.automation.account_id)
-        .eq('pipeline_id', cfg.pipeline_id)
-        .eq('contact_id', args.contactId)
-        .not('status', 'in', '("won","lost")')
-        .limit(1)
-        .maybeSingle()
-
-      if (findErr) throw new Error(`failed to query active deal: ${findErr.message}`)
+      // Query pipeline and target stage names for advance_deal_stage_safely RPC
+      const { data: p } = await db.from('pipelines').select('name').eq('id', cfg.pipeline_id).maybeSingle()
+      const { data: s } = await db.from('pipeline_stages').select('name').eq('id', cfg.stage_id).maybeSingle()
       
-      if (!activeDeal) {
-        // Safe no-op as per plan Option A
-        return 'no active deal found, skipped'
+      if (!p || !s) throw new Error('pipeline or stage not found')
+
+      // Call-side protection for Proposal Sent automation:
+      // If target stage is "Proposal Sent", only advance if current stage is "Qualified".
+      if (s.name === 'Proposal Sent') {
+        const { data: currentDeal } = await db
+          .from('deals')
+          .select('id, stage:pipeline_stages!inner(name)')
+          .eq('account_id', args.automation.account_id)
+          .eq('pipeline_id', cfg.pipeline_id)
+          .eq('contact_id', args.contactId)
+          .not('status', 'in', '("won","lost")')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (!currentDeal) return 'no active deal found, skipped'
+        const stageName = (currentDeal.stage as unknown as { name: string }).name
+        if (stageName !== 'Qualified' && stageName !== 'Proposal Sent') {
+          return `skipped: target is Proposal Sent but current stage is ${stageName}`
+        }
       }
 
-      // Update the stage
-      const { error: updErr } = await db
-        .from('deals')
-        .update({
-          stage_id: cfg.stage_id,
-          conversation_id: args.context.conversation_id || undefined,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', activeDeal.id)
+      const { error: rpcErr } = await db.rpc('advance_deal_stage_safely', {
+        p_account_id: args.automation.account_id,
+        p_contact_id: args.contactId,
+        p_pipeline_name: p.name,
+        p_target_stage_name: s.name,
+      })
 
-      if (updErr) throw new Error(`failed to update deal stage: ${updErr.message}`)
-      return 'deal stage updated'
+      if (rpcErr) throw new Error(`advance_deal_stage_safely failed: ${rpcErr.message}`)
+
+      // The RPC doesn't update conversation_id, but the old direct update did.
+      // Update it safely on the active deal if a conversation context exists.
+      if (args.context.conversation_id) {
+        await db.from('deals')
+          .update({ conversation_id: args.context.conversation_id })
+          .eq('account_id', args.automation.account_id)
+          .eq('pipeline_id', cfg.pipeline_id)
+          .eq('contact_id', args.contactId)
+          .not('status', 'in', '("won","lost")')
+      }
+
+      return 'deal stage updated safely'
     }
 
     case 'send_webhook': {
@@ -719,6 +744,16 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     const cfg = automation.trigger_config as TagTriggerConfig
     const tagId = ctx?.tag_id
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
+  }
+
+  if (automation.trigger_type === 'template_sent') {
+    const cfg = automation.trigger_config as TemplateSentTriggerConfig
+    const ctxTemplate = ctx?.template_name
+    if (!ctxTemplate) return false
+    if (cfg.template_name && cfg.template_name !== ctxTemplate) {
+      return false
+    }
+    return true
   }
 
   return true

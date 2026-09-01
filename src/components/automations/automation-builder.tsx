@@ -53,6 +53,7 @@ import type {
   InteractiveMessagePayload,
   KeywordMatchTriggerConfig,
   MessageTemplate,
+  TemplateSentTriggerConfig,
   Tag as TagRecord,
 } from "@/types"
 import {
@@ -140,6 +141,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "conversation_assigned" },
   { value: "tag_added" },
   { value: "time_based" },
+  { value: "template_sent" },
 ]
 
 function cid(): string {
@@ -852,6 +854,13 @@ function TriggerCard({
             {type === "interactive_reply" && (
               <InteractiveReplyConfig config={config} onChange={onConfigChange} t={t} />
             )}
+            {type === "template_sent" && (
+              <TemplateSentConfig
+                config={config as unknown as TemplateSentTriggerConfig}
+                onChange={onConfigChange}
+                t={t}
+              />
+            )}
             {type === "tag_added" && (
               <div>
                 <label className="mb-1 block text-xs font-medium text-muted-foreground">
@@ -1007,6 +1016,33 @@ function InteractiveReplyConfig({
         className="bg-muted font-mono text-foreground"
       />
       <p className="mt-1 text-[11px] text-muted-foreground">{t("replyIdsHelp")}</p>
+    </div>
+  )
+}
+
+function TemplateSentConfig({
+  config,
+  onChange,
+  t,
+}: {
+  config: TemplateSentTriggerConfig
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+        {t("templates.templateNameLabel")}
+      </label>
+      <Input
+        value={config?.template_name ?? ""}
+        onChange={(e) => onChange({ ...config, template_name: e.target.value })}
+        placeholder={t("triggerTemplateNameHint") || "Optional exact template name"}
+        className="bg-muted text-foreground"
+      />
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {t("triggerTemplateNameHelp") || "Leave blank to trigger on ANY template sent."}
+      </p>
     </div>
   )
 }
