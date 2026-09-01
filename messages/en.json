@@ -874,6 +874,10 @@
         "template_sent": {
           "label": "Template Sent",
           "hint": "Trigger when a WhatsApp template is successfully sent"
+        },
+        "out_of_office": {
+          "label": "Out of Office",
+          "hint": "Fires when a message arrives outside your configured working hours"
         }
       },
       "trigger": "Trigger",

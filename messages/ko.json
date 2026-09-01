@@ -873,6 +873,10 @@
         "template_sent": {
           "label": "템플릿 전송됨",
           "hint": "WhatsApp 템플릿이 성공적으로 전송되었을 때 트리거됩니다"
+        },
+        "out_of_office": {
+          "label": "부재중",
+          "hint": "설정된 업무 시간 외에 메시지가 도착했을 때 트리거됩니다"
         }
       },
       "trigger": "트리거",
