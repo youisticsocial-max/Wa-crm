@@ -8,6 +8,7 @@ import { buildHandoffSummary, buildBridgeMessage, extractHandoffBrief } from './
 import { sanitizeReplyScript, formatWhatsAppMessage } from './sanitize'
 import { logAiUsage } from './usage'
 import { latestCustomerBurst, latestUserMessage } from './query'
+import { classifyNegotiation } from './classifier'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendPushToUser, sendPushToQueue } from '@/lib/push/send'
@@ -207,6 +208,38 @@ export async function dispatchInboundToAiReply(
       }
     } catch (err) {
       console.error('[ai auto-reply] qualification evaluation failed:', err)
+    }
+
+    // Evaluate negotiation silently
+    try {
+      const { data: activeDeal } = await db
+        .from('deals')
+        .select('id, stage:pipeline_stages(name)')
+        .eq('account_id', accountId)
+        .eq('contact_id', contactId)
+        .eq('status', 'open')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      // @ts-ignore - Supabase type generation doesn't know about the join alias structure here
+      const stageName = activeDeal?.stage?.name
+      
+      if (activeDeal && stageName === 'Proposal Sent') {
+        const negotiation = await classifyNegotiation(customerText, config)
+        if (negotiation?.negotiation_detected && negotiation.confidence >= 0.80) {
+          await db.from('conversations').update({
+            negotiation_suggestion: {
+              detected: true,
+              reason: negotiation.reason,
+              confidence: negotiation.confidence,
+              message_burst: customerText
+            }
+          }).eq('id', conversationId)
+        }
+      }
+    } catch (err) {
+      console.error('[ai auto-reply] negotiation evaluation failed:', err)
     }
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)

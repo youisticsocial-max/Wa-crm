@@ -23,14 +23,16 @@ vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: () => {
-      // conversations
+      // conversations / deals
+      const chainable = {
+        select: () => chainable,
+        eq: () => chainable,
+        order: () => chainable,
+        limit: () => chainable,
+        maybeSingle: () => Promise.resolve({ data: h.state.conv, error: null }),
+      }
       return {
-        select: () => ({
-          eq: () => ({
-            maybeSingle: () =>
-              Promise.resolve({ data: h.state.conv, error: null }),
-          }),
-        }),
+        ...chainable,
         update: (payload: Record<string, unknown>) => {
           h.state.updatePayload = payload
           return { eq: () => Promise.resolve({ error: null }) }

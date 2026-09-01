@@ -50,6 +50,7 @@ import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { AiHandoffBrief } from "./ai-handoff-brief";
+import { NegotiationBanner } from "./negotiation-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
 
@@ -1067,6 +1068,16 @@ export function MessageThread({
             historical={!(conversation.ai_autoreply_disabled || conversation.assigned_agent_id)}
           />
         </div>
+      )}
+
+      {conversation?.negotiation_suggestion && conversation.negotiation_suggestion.detected && (
+        <NegotiationBanner
+          conversationId={conversation.id}
+          contactId={conversation.contact_id}
+          reason={conversation.negotiation_suggestion.reason}
+          onDismiss={() => {}}
+          onAdvanced={() => {}}
+        />
       )}
 
       {/* Messages Area */}
