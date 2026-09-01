@@ -18,19 +18,29 @@ export async function POST(request: Request, { params }: Params) {
 
     if (!dismissOnly) {
       if (targetStatus === 'won' || targetStatus === 'lost') {
-        const { error: updateErr } = await supabase
+        const { data: activeDeal } = await supabase
           .from('deals')
-          .update({ status: targetStatus })
+          .select('id')
           .eq('account_id', accountId)
           .eq('contact_id', contactId)
           .eq('status', 'open')
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
 
-        if (updateErr) {
-          console.error('[contacts/advance-deal] failed to update status:', updateErr)
-          return NextResponse.json(
-            { error: 'Failed to update deal status' },
-            { status: 500 },
-          )
+        if (activeDeal) {
+          const { error: rpcErr } = await supabase.rpc('resolve_deal_terminal_state', {
+            p_deal_id: activeDeal.id,
+            p_target_status: targetStatus
+          })
+
+          if (rpcErr) {
+            console.error('[contacts/advance-deal] RPC terminal error:', rpcErr)
+            return NextResponse.json(
+              { error: 'Failed to update deal status and stage' },
+              { status: 500 },
+            )
+          }
         }
       } else {
         // Safely advance the deal stage

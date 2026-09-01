@@ -214,10 +214,20 @@ export function DealForm({
   async function handleStatusChange(status: DealStatus) {
     if (!deal) return;
     setStatusAction(status);
-    const { error } = await supabase
-      .from("deals")
-      .update({ status })
-      .eq("id", deal.id);
+    let error;
+    if (status === "won" || status === "lost") {
+      const res = await supabase.rpc('resolve_deal_terminal_state', {
+        p_deal_id: deal.id,
+        p_target_status: status
+      });
+      error = res.error;
+    } else {
+      const res = await supabase
+        .from("deals")
+        .update({ status })
+        .eq("id", deal.id);
+      error = res.error;
+    }
     setStatusAction(null);
     if (error) {
       toast.error(t("toastFailedStatus"));
