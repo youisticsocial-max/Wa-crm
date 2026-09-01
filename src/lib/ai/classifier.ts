@@ -168,3 +168,83 @@ export async function classifyNurture(
 
   return null
 }
+
+export interface TerminalClassification {
+  outcome: 'won' | 'lost' | 'none'
+  reason: string
+  confidence: number
+}
+
+const TERMINAL_SYSTEM_PROMPT = `You are a strict classifier analyzing a customer's WhatsApp message to determine if it indicates a strong, final business outcome ("won" or "lost") for a deal/opportunity.
+Return ONLY valid JSON matching this schema exactly:
+{
+  "outcome": "won" | "lost" | "none",
+  "reason": "string (short explanation)",
+  "confidence": number (0.0 to 1.0)
+}
+
+RULES FOR DETECTION:
+- "won": The customer explicitly confirms they are proceeding, have made payment, or are asking to start the project. (e.g., "done, start karo", "we are proceeding with you", "invoice bhejo, advance karte hain", "payment kar diya", "project start kar do")
+- "lost": The customer explicitly declines, goes with a competitor, or cancels the project definitively. (e.g., "we selected another agency", "not interested", "project cancel kar diya", "budget approve nahi hua, close this", "please close the deal")
+- "none": The customer is still deciding, deferring, negotiating, or asking general questions. If the message is ambiguous, you MUST classify it as "none". Negotiation and Nurture intents take precedence over Won/Lost when ambiguous. (e.g., "soch ke batata hu", "next month baat karte hain", "boss se discuss karunga", "budget abhi nahi hai", "40k me karoge?")
+- Only surface a "won" or "lost" suggestion at high confidence. If unsure, default to "none".
+
+Analyze ONLY the customer's intent in the provided message burst.`
+
+export async function classifyTerminalIntent(
+  customerBurstText: string,
+  config: AiConfig,
+): Promise<TerminalClassification | null> {
+  if (!customerBurstText.trim()) return null
+
+  const timeoutMs = aiRequestTimeoutMs()
+  const resolvedBaseUrl =
+    config.baseUrl && config.baseUrl.trim()
+      ? config.baseUrl.trim()
+      : (AI_PROVIDER_DEFAULT_ENDPOINT[config.provider] ?? null)
+
+  const messages: ChatMessage[] = [
+    { role: 'user', content: customerBurstText }
+  ]
+
+  const providerArgs = {
+    apiKey: config.apiKey,
+    model: config.model,
+    baseUrl: resolvedBaseUrl,
+    systemPrompt: TERMINAL_SYSTEM_PROMPT,
+    messages,
+    timeoutMs,
+  }
+
+  let text: string
+  try {
+    if (config.provider === 'anthropic') {
+      const res = await generateAnthropic(providerArgs)
+      text = res.text
+    } else {
+      const res = await generateOpenAi(providerArgs)
+      text = res.text
+    }
+  } catch (err) {
+    console.error('[ai classifier] provider error:', err)
+    return null
+  }
+
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return null
+    const parsed = JSON.parse(jsonMatch[0]) as Partial<TerminalClassification>
+
+    if (
+      (parsed.outcome === 'won' || parsed.outcome === 'lost' || parsed.outcome === 'none') &&
+      typeof parsed.reason === 'string' &&
+      typeof parsed.confidence === 'number'
+    ) {
+      return parsed as TerminalClassification
+    }
+  } catch (err) {
+    console.error('[ai classifier] failed to parse classification:', err)
+  }
+
+  return null
+}

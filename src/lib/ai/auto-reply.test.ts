@@ -10,9 +10,11 @@ const h = vi.hoisted(() => ({
   engineSendText: vi.fn(),
   classifyNegotiation: vi.fn(),
   classifyNurture: vi.fn(),
+  classifyTerminalIntent: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     updatePayload: null as Record<string, unknown> | null,
+    updatePayloads: [] as Record<string, unknown>[],
     dealsUpdatePayload: null as Record<string, unknown> | null,
     dealsUpdateEqArgs: [] as any[],
     rpcCalls: [] as { name: string; args: unknown }[],
@@ -25,9 +27,14 @@ vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('./classifier', () => ({ 
   classifyNegotiation: h.classifyNegotiation,
-  classifyNurture: h.classifyNurture 
+  classifyNurture: h.classifyNurture,
+  classifyTerminalIntent: h.classifyTerminalIntent, 
 }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
+vi.mock('@/lib/rate-limit', () => ({ 
+  checkRateLimit: vi.fn().mockReturnValue({ success: true }),
+  RATE_LIMITS: { aiAutoReplyAccount: { limit: 100, windowMs: 1000 } }
+}))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -45,6 +52,7 @@ vi.mock('./admin-client', () => ({
         update: (payload: Record<string, unknown>) => {
           if (table === 'conversations') {
             h.state.updatePayload = payload
+            h.state.updatePayloads.push(payload)
           } else if (table === 'deals') {
             h.state.dealsUpdatePayload = payload
             h.state.dealsUpdateEqArgs = []
@@ -99,6 +107,7 @@ beforeEach(() => {
     ai_reply_count: 0,
   }
   h.state.updatePayload = null
+  h.state.updatePayloads = []
   h.state.dealsUpdatePayload = null
   h.state.dealsUpdateEqArgs = []
   h.state.rpcCalls = []
@@ -109,6 +118,7 @@ beforeEach(() => {
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
   h.classifyNegotiation.mockResolvedValue(null)
   h.classifyNurture.mockResolvedValue(null)
+  h.classifyTerminalIntent.mockResolvedValue(null)
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -386,8 +396,7 @@ describe('dispatchInboundToAiReply — negotiation detection', () => {
     await dispatchInboundToAiReply(ARGS)
 
     expect(h.classifyNegotiation).toHaveBeenCalled()
-    // Wait, since we are doing 2 things, updatePayload could be anything if it fell through, but for price kya hai, no update should happen if it's not a handoff
-    expect(h.state.updatePayload).toBeNull() 
+    expect(h.state.updatePayloads.some(p => p.negotiation_suggestion)).toBe(false)
   })
 
   it('"budget 50k hai" => no suggestion', async () => {
@@ -402,10 +411,10 @@ describe('dispatchInboundToAiReply — negotiation detection', () => {
     await dispatchInboundToAiReply(ARGS)
 
     expect(h.classifyNegotiation).toHaveBeenCalled()
-    expect(h.state.updatePayload).toBeNull()
+    expect(h.state.updatePayloads.some(p => p.negotiation_suggestion)).toBe(false)
   })
 
-  it('Qualified stage => classifier not run', async () => {
+  it('Qualified stage => classifier run for terminal but not negotiation', async () => {
     h.buildConversationContext.mockResolvedValue([{ role: 'user', content: '50k ki jagah 40k me ho jayega?' }])
     h.state.conv = { stage: { name: 'Qualified' } } 
 
@@ -504,5 +513,84 @@ describe('dispatchInboundToAiReply — nurture detection', () => {
     expect(h.state.dealsUpdateEqArgs).toContainEqual(['id', 'deal-123'])
     // Should NOT contain account_id or contact_id as the update key anymore (proves we target by deal id only)
     expect(h.state.dealsUpdateEqArgs).not.toContainEqual(['account_id', ARGS.accountId])
+  })
+})
+
+describe('dispatchInboundToAiReply — terminal detection', () => {
+  it('explicit proceed message -> Won suggestion', async () => {
+    h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'done, start karo' }])
+    h.state.conv = { stage: { name: 'Proposal Sent' } }
+    h.classifyNegotiation.mockResolvedValue({ negotiation_detected: false, reason: '', confidence: 0 })
+    h.classifyNurture.mockResolvedValue({ nurture_detected: false, reason: '', confidence: 0, raw_follow_up_phrase: null })
+    h.classifyTerminalIntent.mockResolvedValue({ outcome: 'won', reason: 'Explicit proceed', confidence: 0.95 })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.classifyTerminalIntent).toHaveBeenCalled()
+  })
+
+  it('explicit payment/start message -> Won suggestion', async () => {
+    h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'payment kar diya' }])
+    h.state.conv = { stage: { name: 'Negotiation' } }
+    h.classifyTerminalIntent.mockResolvedValue({ outcome: 'won', reason: 'Payment confirmed', confidence: 0.90 })
+
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.classifyTerminalIntent).toHaveBeenCalled()
+  })
+
+  it('explicit rejection -> Lost suggestion', async () => {
+    h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'not interested' }])
+    h.state.conv = { stage: { name: 'Qualified' } }
+    h.classifyTerminalIntent.mockResolvedValue({ outcome: 'lost', reason: 'Rejection', confidence: 0.99 })
+
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.classifyTerminalIntent).toHaveBeenCalled()
+  })
+
+  it('chose competitor -> Lost suggestion', async () => {
+    h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'we selected another agency' }])
+    h.state.conv = { stage: { name: 'Proposal Sent' } }
+    h.classifyTerminalIntent.mockResolvedValue({ outcome: 'lost', reason: 'Competitor chosen', confidence: 0.95 })
+
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.classifyTerminalIntent).toHaveBeenCalled()
+  })
+
+  it('"next month baat karte hain" -> NOT Won/Lost', async () => {
+    h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'next month baat karte hain' }])
+    h.state.conv = { stage: { name: 'Proposal Sent' } }
+    // Nurture has precedence, it should run and detect true
+    h.classifyNurture.mockResolvedValue({ nurture_detected: true, reason: 'deferral', confidence: 0.90, raw_follow_up_phrase: null })
+
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.classifyNurture).toHaveBeenCalled()
+    expect(h.classifyTerminalIntent).not.toHaveBeenCalled()
+  })
+
+  it('"40k me karoge?" -> NOT Won/Lost', async () => {
+    h.buildConversationContext.mockResolvedValue([{ role: 'user', content: '40k me karoge?' }])
+    h.state.conv = { stage: { name: 'Proposal Sent' } }
+    h.classifyNegotiation.mockResolvedValue({ negotiation_detected: true, reason: 'counter-offer', confidence: 0.95 })
+
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.classifyNegotiation).toHaveBeenCalled()
+    expect(h.classifyTerminalIntent).not.toHaveBeenCalled()
+  })
+
+  it('AI does not directly set Won/Lost, it sets terminal_suggestion', async () => {
+    h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'payment done' }])
+    h.state.conv = { stage: { name: 'Qualified' } }
+    h.classifyTerminalIntent.mockResolvedValue({ outcome: 'won', reason: '', confidence: 0.95 })
+
+    await dispatchInboundToAiReply(ARGS)
+    
+    console.log('UPDATE PAYLOADS:', JSON.stringify(h.state.updatePayloads, null, 2))
+    
+    // In update, it should set terminal_suggestion, NOT status='won'
+    const terminalUpdate = h.state.updatePayloads.find(p => p.terminal_suggestion)
+    expect(terminalUpdate).toMatchObject({
+      terminal_suggestion: expect.objectContaining({ outcome: 'won' })
+    })
+    expect(terminalUpdate).not.toHaveProperty('status')
   })
 })

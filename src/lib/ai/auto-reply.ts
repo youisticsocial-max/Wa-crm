@@ -8,7 +8,7 @@ import { buildHandoffSummary, buildBridgeMessage, extractHandoffBrief } from './
 import { sanitizeReplyScript, formatWhatsAppMessage } from './sanitize'
 import { logAiUsage } from './usage'
 import { latestCustomerBurst, latestUserMessage } from './query'
-import { classifyNegotiation, classifyNurture } from './classifier'
+import { classifyNegotiation, classifyNurture, classifyTerminalIntent } from './classifier'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendPushToUser, sendPushToQueue } from '@/lib/push/send'
@@ -164,6 +164,7 @@ export async function dispatchInboundToAiReply(
       const stageName = activeDeal?.stage?.name
       
       let negotiationTriggered = false
+      let nurtureTriggered = false
       if (activeDeal && stageName === 'Proposal Sent') {
         const negotiation = await classifyNegotiation(customerText, config)
         if (negotiation?.negotiation_detected && negotiation.confidence >= 0.80) {
@@ -189,6 +190,7 @@ export async function dispatchInboundToAiReply(
         if (!prevNurture || prevNurture.message_burst !== customerText) {
           const nurture = await classifyNurture(customerText, config)
           if (nurture?.nurture_detected && nurture.confidence >= 0.80) {
+            nurtureTriggered = true
             await db.from('conversations').update({
               nurture_suggestion: {
                 detected: true,
@@ -201,8 +203,27 @@ export async function dispatchInboundToAiReply(
           }
         }
       }
+
+      if (
+        !negotiationTriggered &&
+        !nurtureTriggered &&
+        activeDeal &&
+        ['Qualified', 'Proposal Sent', 'Negotiation', 'Nurture / Follow-up Later'].includes(stageName as string)
+      ) {
+        const terminal = await classifyTerminalIntent(customerText, config)
+        if (terminal && (terminal.outcome === 'won' || terminal.outcome === 'lost') && terminal.confidence >= 0.85) {
+          await db.from('conversations').update({
+            terminal_suggestion: {
+              outcome: terminal.outcome,
+              reason: terminal.reason,
+              confidence: terminal.confidence,
+              message_burst: customerText
+            }
+          }).eq('id', conversationId)
+        }
+      }
     } catch (err) {
-      console.error('[ai auto-reply] negotiation/nurture evaluation failed:', err)
+      console.error('[ai auto-reply] negotiation/nurture/terminal evaluation failed:', err)
     }
 
     if (handoff || !text) {

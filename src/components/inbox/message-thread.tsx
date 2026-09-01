@@ -52,6 +52,7 @@ import { AiThreadBanner } from "./ai-thread-banner";
 import { AiHandoffBrief } from "./ai-handoff-brief";
 import { NegotiationBanner } from "./negotiation-banner";
 import { NurtureBanner } from "./nurture-banner";
+import { TerminalBanner } from "./terminal-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
 
@@ -73,6 +74,11 @@ interface ExtendedConversation extends Conversation {
     detected: boolean;
     reason: string;
     raw_follow_up_phrase: string;
+    confidence: number;
+  } | null;
+  terminal_suggestion?: {
+    outcome: 'won' | 'lost' | 'none';
+    reason: string;
     confidence: number;
   } | null;
 }
@@ -1078,6 +1084,17 @@ export function MessageThread({
             historical={!(conversation.ai_autoreply_disabled || conversation.assigned_agent_id)}
           />
         </div>
+      )}
+
+      {conversation?.terminal_suggestion && conversation.terminal_suggestion.outcome !== 'none' && (
+        <TerminalBanner
+          conversationId={conversation.id}
+          contactId={conversation.contact_id}
+          outcome={conversation.terminal_suggestion.outcome}
+          reason={conversation.terminal_suggestion.reason}
+          onDismiss={() => {}}
+          onResolved={() => {}}
+        />
       )}
 
       {conversation?.negotiation_suggestion && conversation.negotiation_suggestion.detected && (

@@ -14,21 +14,40 @@ export async function POST(request: Request, { params }: Params) {
     const targetStage = body.targetStage || 'Negotiation'
     const followUpAt = body.followUpAt
 
-    if (!dismissOnly) {
-      // Safely advance the deal stage
-      const { error: rpcErr } = await supabase.rpc('advance_deal_stage_safely', {
-        p_account_id: accountId,
-        p_contact_id: contactId,
-        p_pipeline_name: 'Sales Pipeline',
-        p_target_stage_name: targetStage,
-      })
+    const targetStatus = body.status // 'won' | 'lost' | undefined
 
-      if (rpcErr) {
-        console.error('[contacts/advance-deal] RPC error:', rpcErr)
-        return NextResponse.json(
-          { error: 'Failed to advance deal stage' },
-          { status: 500 },
-        )
+    if (!dismissOnly) {
+      if (targetStatus === 'won' || targetStatus === 'lost') {
+        const { error: updateErr } = await supabase
+          .from('deals')
+          .update({ status: targetStatus })
+          .eq('account_id', accountId)
+          .eq('contact_id', contactId)
+          .eq('status', 'open')
+
+        if (updateErr) {
+          console.error('[contacts/advance-deal] failed to update status:', updateErr)
+          return NextResponse.json(
+            { error: 'Failed to update deal status' },
+            { status: 500 },
+          )
+        }
+      } else {
+        // Safely advance the deal stage
+        const { error: rpcErr } = await supabase.rpc('advance_deal_stage_safely', {
+          p_account_id: accountId,
+          p_contact_id: contactId,
+          p_pipeline_name: 'Sales Pipeline',
+          p_target_stage_name: targetStage,
+        })
+
+        if (rpcErr) {
+          console.error('[contacts/advance-deal] RPC error:', rpcErr)
+          return NextResponse.json(
+            { error: 'Failed to advance deal stage' },
+            { status: 500 },
+          )
+        }
       }
 
       if (targetStage === 'Nurture / Follow-up Later' && followUpAt) {
@@ -55,9 +74,12 @@ export async function POST(request: Request, { params }: Params) {
       updatePayload.nurture_suggestion = null
     } else if (dismissTarget === 'negotiation' || targetStage === 'Negotiation') {
       updatePayload.negotiation_suggestion = null
+    } else if (dismissTarget === 'terminal' || targetStatus === 'won' || targetStatus === 'lost') {
+      updatePayload.terminal_suggestion = null
     } else {
       updatePayload.negotiation_suggestion = null
       updatePayload.nurture_suggestion = null
+      updatePayload.terminal_suggestion = null
     }
 
     await supabase
