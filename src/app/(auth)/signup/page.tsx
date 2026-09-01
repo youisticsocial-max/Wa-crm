@@ -42,7 +42,7 @@ function SignupPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const supabase = createClient();
+
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +64,8 @@ function SignupPageInner() {
     // email back at the join page so the user can accept after
     // verifying. Without a token, Supabase uses its default
     // redirect (the app root).
+    const supabase = createClient();
+
     const emailRedirectTo = inviteToken
       ? `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`
       : undefined;

@@ -19,7 +19,7 @@ const MIN_PASSWORD = 8;
 
 export default function UpdatePasswordPage() {
   const router = useRouter();
-  const supabase = createClient();
+
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -42,6 +42,7 @@ export default function UpdatePasswordPage() {
 
     setLoading(true);
 
+    const supabase = createClient();
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
