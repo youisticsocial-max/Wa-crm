@@ -68,8 +68,17 @@ function renderTemplateBody(body: string, params: string[]): string {
   });
 }
 
+interface ExtendedConversation extends Conversation {
+  nurture_suggestion?: {
+    detected: boolean;
+    reason: string;
+    raw_follow_up_phrase: string;
+    confidence: number;
+  } | null;
+}
+
 interface MessageThreadProps {
-  conversation: Conversation | null;
+  conversation: ExtendedConversation | null;
   contact: Contact | null;
   messages: Message[];
   onMessagesLoaded: (messages: Message[]) => void;
@@ -1081,13 +1090,12 @@ export function MessageThread({
         />
       )}
 
-      {/* @ts-ignore - nurture_suggestion is dynamic until db push and type gen */}
-      {(conversation as any)?.nurture_suggestion && (conversation as any).nurture_suggestion.detected && (
+      {conversation?.nurture_suggestion && conversation.nurture_suggestion.detected && (
         <NurtureBanner
           conversationId={conversation.id}
           contactId={conversation.contact_id}
-          reason={(conversation as any).nurture_suggestion.reason}
-          rawPhrase={(conversation as any).nurture_suggestion.raw_follow_up_phrase}
+          reason={conversation.nurture_suggestion.reason}
+          rawPhrase={conversation.nurture_suggestion.raw_follow_up_phrase}
           onDismiss={() => {}}
           onAdvanced={() => {}}
         />

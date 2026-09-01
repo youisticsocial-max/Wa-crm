@@ -66,12 +66,13 @@ export async function dispatchInboundToAiReply(
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
 
-    // Customer replied early -> cancel any pending nurture follow-up reminder
+    // Customer replied early -> cancel any pending nurture follow-up reminder on open deals
     await db
       .from('deals')
       .update({ follow_up_at: null })
       .eq('account_id', accountId)
       .eq('contact_id', contactId)
+      .eq('status', 'open')
       .not('follow_up_at', 'is', null)
 
 
