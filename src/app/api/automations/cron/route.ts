@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
+import { processDueFollowUps } from '@/lib/deals/cron'
 
 /**
  * Drain due `automation_pending_executions` rows. Meant to be hit
@@ -70,5 +71,11 @@ export async function GET(request: Request) {
     processed++
   }
 
-  return NextResponse.json({ processed })
+  // Also process due Nurture follow-up reminders
+  const { processed: dealsProcessed } = await processDueFollowUps(admin)
+
+  return NextResponse.json({ 
+    automationsProcessed: processed,
+    dealsProcessed
+  })
 }

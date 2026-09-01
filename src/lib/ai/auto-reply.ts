@@ -66,14 +66,26 @@ export async function dispatchInboundToAiReply(
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
 
-    // Customer replied early -> cancel any pending nurture follow-up reminder on open deals
-    await db
+    // We need to resolve the active deal to know which follow_up_at to cancel
+    // or which stage to evaluate for negotiation/nurture.
+    const { data: activeDeal } = await db
       .from('deals')
-      .update({ follow_up_at: null })
+      .select('id, stage:pipeline_stages(name)')
       .eq('account_id', accountId)
       .eq('contact_id', contactId)
       .eq('status', 'open')
-      .not('follow_up_at', 'is', null)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (activeDeal) {
+      // Customer replied early -> cancel any pending nurture follow-up reminder on THIS exact deal
+      await db
+        .from('deals')
+        .update({ follow_up_at: null })
+        .eq('id', activeDeal.id)
+        .not('follow_up_at', 'is', null)
+    }
 
 
     // Account-wide throttle on the shared BYO key. Durable inbound
@@ -146,15 +158,7 @@ export async function dispatchInboundToAiReply(
 
     // Evaluate negotiation and nurture silently
     try {
-      const { data: activeDeal } = await db
-        .from('deals')
-        .select('id, stage:pipeline_stages(name)')
-        .eq('account_id', accountId)
-        .eq('contact_id', contactId)
-        .eq('status', 'open')
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      // activeDeal is fetched above
 
       // @ts-ignore - Supabase type generation doesn't know about the join alias structure here
       const stageName = activeDeal?.stage?.name

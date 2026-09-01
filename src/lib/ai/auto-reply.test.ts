@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
     conv: null as Record<string, unknown> | null,
     updatePayload: null as Record<string, unknown> | null,
     dealsUpdatePayload: null as Record<string, unknown> | null,
+    dealsUpdateEqArgs: [] as any[],
     rpcCalls: [] as { name: string; args: unknown }[],
   },
 }))
@@ -46,23 +47,17 @@ vi.mock('./admin-client', () => ({
             h.state.updatePayload = payload
           } else if (table === 'deals') {
             h.state.dealsUpdatePayload = payload
+            h.state.dealsUpdateEqArgs = []
           }
-          const updater = { eq: () => updater, not: () => Promise.resolve({ error: null }) }
-          // We need a promise that can chain eq and not.
-          // Simplest is returning an object with eq and not that return themselves or a promise.
-          return {
-            eq: () => ({
-              eq: () => ({
-                not: () => Promise.resolve({ error: null })
-              }),
-              then: (res: any, rej: any) => Promise.resolve({ error: null }).then(res, rej)
-            }),
-            not: () => ({
-              eq: () => Promise.resolve({ error: null }),
-              then: (res: any, rej: any) => Promise.resolve({ error: null }).then(res, rej)
-            }),
+          const updater = {
+            eq: (key: string, val: any) => {
+              if (table === 'deals') h.state.dealsUpdateEqArgs.push([key, val])
+              return updater
+            },
+            not: () => Promise.resolve({ error: null }),
             then: (res: any, rej: any) => Promise.resolve({ error: null }).then(res, rej)
           }
+          return updater
         },
       }
     },
@@ -105,6 +100,7 @@ beforeEach(() => {
   }
   h.state.updatePayload = null
   h.state.dealsUpdatePayload = null
+  h.state.dealsUpdateEqArgs = []
   h.state.rpcCalls = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
@@ -496,12 +492,17 @@ describe('dispatchInboundToAiReply — nurture detection', () => {
     })
   })
 
-  it('early reply clears follow_up_at', async () => {
+  it('early reply clears follow_up_at only on exact active deal', async () => {
     h.state.dealsUpdatePayload = null
+    h.state.conv = { id: 'deal-123' } // maybeSingle returns this mock active deal
+    
     await dispatchInboundToAiReply(ARGS)
     
     expect(h.state.dealsUpdatePayload).toMatchObject({
       follow_up_at: null
     })
+    expect(h.state.dealsUpdateEqArgs).toContainEqual(['id', 'deal-123'])
+    // Should NOT contain account_id or contact_id as the update key anymore (proves we target by deal id only)
+    expect(h.state.dealsUpdateEqArgs).not.toContainEqual(['account_id', ARGS.accountId])
   })
 })
