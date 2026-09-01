@@ -34,7 +34,11 @@ export async function POST(request: Request, { params }: Params) {
       if (targetStage === 'Nurture / Follow-up Later' && followUpAt) {
         const { error: updateErr } = await supabase
           .from('deals')
-          .update({ follow_up_at: followUpAt })
+          .update({ 
+            follow_up_at: followUpAt,
+            follow_up_claimed_at: null,
+            follow_up_notified_at: null
+          })
           .eq('account_id', accountId)
           .eq('contact_id', contactId)
           .eq('status', 'open')
