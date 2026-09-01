@@ -831,6 +831,7 @@
         "assign_conversation": "대화 담당자 지정",
         "update_contact_field": "연락처 필드 업데이트",
         "create_deal": "딜 생성",
+        "update_deal_stage": "딜 이동 / 단계 설정",
         "wait": "대기",
         "condition": "조건 (If/Else)",
         "send_webhook": "웹훅 보내기",
@@ -868,10 +869,16 @@
         "time_based": {
           "label": "시간 기반",
           "hint": "반복 일정에 따라"
+        },
+        "template_sent": {
+          "label": "템플릿 전송됨",
+          "hint": "WhatsApp 템플릿이 성공적으로 전송되었을 때 트리거됩니다"
         }
       },
       "trigger": "트리거",
       "triggerType": "트리거 유형",
+      "triggerTemplateNameHint": "선택적 정확한 템플릿 이름",
+      "triggerTemplateNameHelp": "일치시킬 정확한 템플릿 이름",
       "keywords": "키워드",
       "keywordsHint": "쉼표로 구분된 목록 (예: hello, help, buy)",
       "replyIds": "응답 ID",
@@ -885,6 +892,7 @@
       "saveDraft": "초안 저장",
       "untitled": "제목 없는 자동화",
       "backToAutomations": "자동화로 돌아가기",
+      "delete": "삭제",
       "toasts": {
         "saved": "자동화가 저장되었습니다",
         "created": "자동화가 생성되었습니다",

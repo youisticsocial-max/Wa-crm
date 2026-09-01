@@ -832,6 +832,7 @@
         "assign_conversation": "Assign Conversation",
         "update_contact_field": "Update Contact Field",
         "create_deal": "Create Deal",
+        "update_deal_stage": "Move Deal / Set Stage",
         "wait": "Wait",
         "condition": "Condition (If/Else)",
         "send_webhook": "Send Webhook",
@@ -869,10 +870,16 @@
         "time_based": {
           "label": "Time-Based",
           "hint": "On a recurring schedule"
+        },
+        "template_sent": {
+          "label": "Template Sent",
+          "hint": "Trigger when a WhatsApp template is successfully sent"
         }
       },
       "trigger": "Trigger",
       "triggerType": "Trigger type",
+      "triggerTemplateNameHint": "Optional exact template name",
+      "triggerTemplateNameHelp": "Exact template name to match",
       "keywords": "Keywords",
       "keywordsHint": "Comma-separated list (e.g. hello, help, buy)",
       "replyIds": "Reply IDs",
@@ -886,6 +893,7 @@
       "saveDraft": "Save Draft",
       "untitled": "Untitled automation",
       "backToAutomations": "Back to automations",
+      "delete": "Delete",
       "toasts": {
         "saved": "Automation saved",
         "created": "Automation created",
