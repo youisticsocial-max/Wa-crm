@@ -19,6 +19,7 @@ import type {
   UpdateDealStageStepConfig,
   AssignConversationStepConfig,
   TemplateSentTriggerConfig,
+  OutOfOfficeTriggerConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
@@ -50,6 +51,8 @@ export interface AutomationContext {
   template_language?: string
   /** The Meta message ID for the sent message, for template_sent trigger. */
   message_id?: string
+  /** Last time an OOO reply was sent, for cooldown enforcement. */
+  last_ooo_sent_at?: string
 }
 
 export interface DispatchInput {
@@ -217,6 +220,18 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
     logId: log.id,
     triggerEvent: input.triggerType,
   })
+
+  // Set cooldown for out_of_office triggers
+  if (input.triggerType === 'out_of_office' && input.context?.conversation_id) {
+    const { error: oooErr } = await db
+      .from('conversations')
+      .update({ last_ooo_sent_at: new Date().toISOString() })
+      .eq('id', input.context.conversation_id)
+      
+    if (oooErr) {
+      console.error('[automations] failed to update last_ooo_sent_at:', oooErr)
+    }
+  }
 
   // Atomic counter update via the SQL function from migration 007.
   // Doing this with a client-side read-modify-write raced when the
@@ -721,6 +736,56 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
 }
 
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
+  if (automation.trigger_type === 'out_of_office') {
+    const cfg = automation.trigger_config as OutOfOfficeTriggerConfig
+    if (!cfg?.timezone || !cfg?.working_days || !cfg?.start_time || !cfg?.end_time) return false
+
+    // 12 hour cooldown check
+    if (ctx?.last_ooo_sent_at) {
+      const lastSent = new Date(ctx.last_ooo_sent_at).getTime()
+      if (Date.now() - lastSent < 12 * 60 * 60 * 1000) {
+        return false // Cooldown active, don't trigger
+      }
+    }
+
+    try {
+      // Get current date/time in the configured timezone
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: cfg.timezone,
+        weekday: 'short',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: false, // Force 24 hour to easily compare HH:mm
+      })
+      
+      const dateParts = formatter.formatToParts(new Date())
+      const part = (type: string) => dateParts.find((p) => p.type === type)?.value
+      
+      // Map short weekday string to number (0=Sun, 1=Mon, ..., 6=Sat)
+      const weekdayStr = part('weekday')
+      const daysMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
+      const dayOfWeek = weekdayStr ? (daysMap[weekdayStr] ?? new Date().getDay()) : new Date().getDay()
+      
+      const hh = part('hour')?.padStart(2, '0')
+      const mm = part('minute')?.padStart(2, '0')
+      const currentTimeStr = `${hh}:${mm}`
+      
+      // If it's a non-working day, it's outside business hours.
+      if (!cfg.working_days.includes(dayOfWeek)) {
+        return true
+      }
+      
+      // Check if current time is outside start_time / end_time range
+      if (currentTimeStr < cfg.start_time || currentTimeStr >= cfg.end_time) {
+        return true
+      }
+      
+      return false
+    } catch (e) {
+      console.error('[automations] OOO check failed (bad timezone?):', e)
+      return false
+    }
+  }
   if (automation.trigger_type === 'keyword_match') {
     const cfg = automation.trigger_config as KeywordMatchTriggerConfig
     if (!cfg?.keywords || cfg.keywords.length === 0) return false

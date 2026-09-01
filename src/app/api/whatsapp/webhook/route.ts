@@ -767,6 +767,7 @@ async function processMessage(
     | 'new_message_received'
     | 'keyword_match'
     | 'interactive_reply'
+    | 'out_of_office'
   )[] = []
 
   // Automations are awaited below, which lets us detect whether one
@@ -787,7 +788,7 @@ async function processMessage(
   // Content-level triggers are suppressed when a flow consumed the
   // message — see the comment block above.
   if (!flowConsumed) {
-    automationTriggers.push('new_message_received', 'keyword_match')
+    automationTriggers.push('new_message_received', 'keyword_match', 'out_of_office')
     // Interactive tap → fire the interactive_reply trigger too (only
     // meaningful when a button/list reply actually arrived). Enables
     // automation-only chained menus; when a Flow owns the menu it will
@@ -816,6 +817,7 @@ async function processMessage(
           // Only set on interactive taps; drives the interactive_reply
           // trigger's exact-id match.
           interactive_reply_id: interactiveReplyId ?? undefined,
+          last_ooo_sent_at: conversation.last_ooo_sent_at ?? undefined,
         },
       })
     } catch (err) {

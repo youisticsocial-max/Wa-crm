@@ -43,6 +43,10 @@ export const TRIGGER_META: Record<AutomationTriggerType, TriggerMeta> = {
     label: 'Template Sent',
     pillClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
   },
+  out_of_office: {
+    label: 'Out of Office',
+    pillClass: 'border-orange-500/30 bg-orange-500/10 text-orange-300',
+  },
 }
 
 export function triggerMeta(t: AutomationTriggerType | string): TriggerMeta {

@@ -446,7 +446,8 @@ export type AutomationTriggerType =
   | 'template_sent'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  | 'out_of_office';
 
 export type AutomationStepType =
   | 'send_message'
@@ -485,6 +486,16 @@ export interface TimeBasedTriggerConfig {
 export interface InteractiveReplyTriggerConfig {
   /** Button / list-row ids to match, exact. Any one matching fires. */
   reply_ids: string[];
+}
+
+export interface OutOfOfficeTriggerConfig {
+  timezone: string;
+  /** 0 = Sunday, 1 = Monday, ..., 6 = Saturday */
+  working_days: number[];
+  /** Format: 'HH:mm' in 24-hour time (e.g., '09:00') */
+  start_time: string;
+  /** Format: 'HH:mm' in 24-hour time (e.g., '17:00') */
+  end_time: string;
 }
 
 export interface TemplateSentTriggerConfig {

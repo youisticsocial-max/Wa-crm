@@ -54,6 +54,8 @@ import type {
   KeywordMatchTriggerConfig,
   MessageTemplate,
   TemplateSentTriggerConfig,
+  InteractiveReplyTriggerConfig,
+  OutOfOfficeTriggerConfig,
   Tag as TagRecord,
 } from "@/types"
 import {
@@ -142,6 +144,7 @@ const TRIGGER_OPTIONS: { value: AutomationTriggerType }[] = [
   { value: "tag_added" },
   { value: "time_based" },
   { value: "template_sent" },
+  { value: "out_of_office" },
 ]
 
 function cid(): string {
@@ -891,6 +894,13 @@ function TriggerCard({
                 </p>
               </div>
             )}
+            {type === "out_of_office" && (
+              <OutOfOfficeConfig
+                config={config as unknown as OutOfOfficeTriggerConfig}
+                onChange={onConfigChange}
+                t={t}
+              />
+            )}
           </div>
         )}
       </div>
@@ -1016,6 +1026,111 @@ function InteractiveReplyConfig({
         className="bg-muted font-mono text-foreground"
       />
       <p className="mt-1 text-[11px] text-muted-foreground">{t("replyIdsHelp")}</p>
+    </div>
+  )
+}
+
+const WEEKDAYS = [
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+  { value: 0, label: 'Sunday' },
+]
+
+function OutOfOfficeConfig({
+  config,
+  onChange,
+  t,
+}: {
+  config: OutOfOfficeTriggerConfig
+  onChange: (c: Record<string, unknown>) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const initConfig = () => {
+    if (!config.timezone) {
+      onChange({
+        ...config,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        working_days: [1, 2, 3, 4, 5],
+        start_time: '09:00',
+        end_time: '17:00'
+      })
+    }
+  }
+
+  useEffect(() => {
+    initConfig()
+  }, [])
+
+  const toggleDay = (day: number) => {
+    const days = config.working_days || []
+    if (days.includes(day)) {
+      onChange({ ...config, working_days: days.filter((d) => d !== day) })
+    } else {
+      onChange({ ...config, working_days: [...days, day].sort() })
+    }
+  }
+
+  return (
+    <div className="space-y-4 pt-2">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">Timezone</label>
+        <Input
+          value={config.timezone || ''}
+          onChange={(e) => onChange({ ...config, timezone: e.target.value })}
+          placeholder="e.g. America/New_York"
+          className="bg-muted"
+        />
+        <p className="mt-1 text-[11px] text-muted-foreground">
+          Must be a valid IANA timezone.
+        </p>
+      </div>
+      <div>
+        <label className="mb-1 block text-xs font-medium text-muted-foreground">Working Days</label>
+        <div className="flex flex-wrap gap-2">
+          {WEEKDAYS.map((day) => {
+            const active = (config.working_days || []).includes(day.value)
+            return (
+              <button
+                key={day.value}
+                type="button"
+                onClick={() => toggleDay(day.value)}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs transition-colors",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-muted text-muted-foreground hover:bg-muted/80"
+                )}
+              >
+                {day.label.slice(0, 3)}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="flex-1">
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">Start Time</label>
+          <Input
+            type="time"
+            value={config.start_time || ''}
+            onChange={(e) => onChange({ ...config, start_time: e.target.value })}
+            className="bg-muted"
+          />
+        </div>
+        <div className="flex-1">
+          <label className="mb-1 block text-xs font-medium text-muted-foreground">End Time</label>
+          <Input
+            type="time"
+            value={config.end_time || ''}
+            onChange={(e) => onChange({ ...config, end_time: e.target.value })}
+            className="bg-muted"
+          />
+        </div>
+      </div>
     </div>
   )
 }
