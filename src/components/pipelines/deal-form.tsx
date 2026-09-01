@@ -384,7 +384,11 @@ export function DealForm({
                 <div className="flex gap-2">
                   <Button
                     type="button"
-                    onClick={() => handleStatusChange("won")}
+                    onClick={() => {
+                      if (window.confirm("Mark this deal as Won?")) {
+                        handleStatusChange("won")
+                      }
+                    }}
                     disabled={!!statusAction || deal.status === "won"}
                     className="flex-1 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                   >
@@ -399,7 +403,11 @@ export function DealForm({
                   </Button>
                   <Button
                     type="button"
-                    onClick={() => handleStatusChange("lost")}
+                    onClick={() => {
+                      if (window.confirm("Mark this deal as Lost?")) {
+                        handleStatusChange("lost")
+                      }
+                    }}
                     disabled={!!statusAction || deal.status === "lost"}
                     className="flex-1 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
                   >

@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
     logUpdates: [] as Record<string, unknown>[],
     rpcCalls: [] as { name: string; args: unknown }[],
     activeDealMock: null as { id: string } | null,
+    mockStageName: null as string | null,
   },
 }));
 
@@ -57,7 +58,7 @@ vi.mock("./admin-client", () => {
     }
     if (table === "automation_steps") return { data: state.steps, error: null };
     if (table === "pipelines") { return { data: { name: "Main Pipeline" }, error: null }; }
-    if (table === "pipeline_stages") { return { data: { name: "Target Stage" }, error: null }; }
+    if (table === "pipeline_stages") { return { data: { name: state.mockStageName || "Target Stage" }, error: null }; }
     if (table === "deals") {
       if (type === "select") return { data: state.activeDealMock, error: null };
       if (type === "update") {
@@ -132,6 +133,7 @@ beforeEach(() => {
   h.state.logUpdates = [];
   h.state.rpcCalls = [];
   h.state.activeDealMock = null;
+  h.state.mockStageName = null;
 });
 
 describe("runAutomationsForTrigger — tenant isolation", () => {
@@ -473,5 +475,52 @@ describe("runAutomationsForTrigger � pipeline deals", () => {
 
     const rpcCall = h.state.rpcCalls.find((c) => c.name === "advance_deal_stage_safely");
     expect(rpcCall).toBeDefined();
+  });
+
+  it("update_deal_stage safely rejects terminal 'Won' stage", async () => {
+    h.state.mockStageName = "Won";
+    h.state.owned = { id: "contact-1" };
+    h.state.activeDealMock = { id: "deal-1" };
+    h.state.automations = [
+      { id: "auto-1", account_id: ACCOUNT, user_id: "u1", trigger_event: "tag_added", is_active: true }
+    ];
+    h.state.steps = [
+      { id: "step-1", automation_id: "auto-1", position: 0, step_type: "update_deal_stage", step_config: { pipeline_id: "p1", stage_id: "s2" } }
+    ];
+
+    await runAutomationsForTrigger({ accountId: ACCOUNT, contactId: "contact-1", triggerType: "tag_added", context: { conversation_id: "conv-2" } });
+
+    const logUpdate = h.state.logUpdates.find((u: any) => u.status === "success");
+    expect(logUpdate).toBeDefined(); // The automation succeeds but skips the step.
+    const stepExecuted = (logUpdate as any).steps_executed.find((s: any) => s.step_id === "step-1");
+    expect(stepExecuted.detail).toMatch(/skipped: automation cannot set terminal stages/);
+    
+    // Ensure RPC wasn't called
+    const rpcCall = h.state.rpcCalls.find((c) => c.name === "advance_deal_stage_safely");
+    expect(rpcCall).toBeUndefined();
+    h.state.mockStageName = null; // cleanup
+  });
+
+  it("update_deal_stage safely rejects terminal 'Lost' stage", async () => {
+    h.state.mockStageName = "Lost";
+    h.state.owned = { id: "contact-1" };
+    h.state.activeDealMock = { id: "deal-1" };
+    h.state.automations = [
+      { id: "auto-1", account_id: ACCOUNT, user_id: "u1", trigger_event: "tag_added", is_active: true }
+    ];
+    h.state.steps = [
+      { id: "step-1", automation_id: "auto-1", position: 0, step_type: "update_deal_stage", step_config: { pipeline_id: "p1", stage_id: "s2" } }
+    ];
+
+    await runAutomationsForTrigger({ accountId: ACCOUNT, contactId: "contact-1", triggerType: "tag_added", context: { conversation_id: "conv-2" } });
+
+    const logUpdate = h.state.logUpdates.find((u: any) => u.status === "success");
+    const stepExecuted = (logUpdate as any).steps_executed.find((s: any) => s.step_id === "step-1");
+    expect(stepExecuted.detail).toMatch(/skipped: automation cannot set terminal stages/);
+    
+    // Ensure RPC wasn't called
+    const rpcCall = h.state.rpcCalls.find((c) => c.name === "advance_deal_stage_safely");
+    expect(rpcCall).toBeUndefined();
+    h.state.mockStageName = null; // cleanup
   });
 });

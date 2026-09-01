@@ -600,6 +600,11 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       
       if (!p || !s) throw new Error('pipeline or stage not found')
 
+      // Terminal semantics: generic automation cannot move deals to terminal stages.
+      if (s.name.toLowerCase() === 'won' || s.name.toLowerCase() === 'lost') {
+        return 'skipped: automation cannot set terminal stages'
+      }
+
       // Call-side protection for Proposal Sent automation:
       // If target stage is "Proposal Sent", only advance if current stage is "Qualified".
       if (s.name === 'Proposal Sent') {
