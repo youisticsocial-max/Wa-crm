@@ -45,6 +45,7 @@ interface WhatsAppMessage {
   timestamp: string
   type: string
   text?: { body: string }
+  button?: { text: string; payload: string }
   image?: { id: string; mime_type: string; caption?: string }
   video?: { id: string; mime_type: string; caption?: string }
   document?: { id: string; mime_type: string; filename?: string; caption?: string }
@@ -908,7 +909,7 @@ async function processMessage(
   }
 }
 
-async function parseMessageContent(
+export async function parseMessageContent(
   message: WhatsAppMessage,
   accessToken: string
 ): Promise<{
@@ -1043,6 +1044,18 @@ async function parseMessageContent(
         }
       }
       return { ...empty, contentText: '[Interactive reply]' }
+    }
+
+    case 'button': {
+      // Template quick-reply buttons arrive as type='button'
+      if (message.button) {
+        return {
+          ...empty,
+          contentText: message.button.text || message.button.payload || null,
+          interactiveReplyId: message.button.payload || null,
+        }
+      }
+      return empty
     }
 
     default:

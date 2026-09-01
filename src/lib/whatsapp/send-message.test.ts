@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>()
+  return {
+    ...actual,
+    after: (fn: any) => fn(),
+  }
+})
+
 import {
   sendMessageToConversation,
   SendMessageError,

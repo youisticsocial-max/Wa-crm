@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('next/server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/server')>()
+  return {
+    ...actual,
+    after: (fn: any) => fn(),
+  }
+})
+
 // ---------------------------------------------------------------------------
 // Tests for the `contact_id` send path (issue #296): sending an approved
 // template to a single contact from the Contact detail view. The route must

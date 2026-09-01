@@ -44,6 +44,7 @@ import {
 } from '@/lib/whatsapp/phone-utils';
 import type { MessageTemplate } from '@/types';
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard';
+import { after } from 'next/server';
 import { runAutomationsForTrigger } from '@/lib/automations/engine';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
@@ -492,19 +493,22 @@ export async function sendMessageToConversation(
 
   // Dispatch template_sent automation trigger if applicable
   if (messageType === 'template' && templateName) {
-    // Fire-and-forget
-    void runAutomationsForTrigger({
-      accountId,
-      triggerType: 'template_sent',
-      contactId: contact.id,
-      context: {
-        template_name: templateName,
-        template_language: templateLanguage || undefined,
-        message_id: waMessageId,
-        conversation_id: conversationId,
-      },
-    }).catch((err) => {
-      console.error('[send-message] template_sent automation dispatch failed:', err);
+    after(async () => {
+      try {
+        await runAutomationsForTrigger({
+          accountId,
+          triggerType: 'template_sent',
+          contactId: contact.id,
+          context: {
+            template_name: templateName,
+            template_language: templateLanguage || undefined,
+            message_id: waMessageId,
+            conversation_id: conversationId,
+          },
+        });
+      } catch (err) {
+        console.error('[send-message] template_sent automation dispatch failed:', err);
+      }
     });
   }
 
