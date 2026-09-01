@@ -9,9 +9,11 @@ const h = vi.hoisted(() => ({
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
   classifyNegotiation: vi.fn(),
+  classifyNurture: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     updatePayload: null as Record<string, unknown> | null,
+    dealsUpdatePayload: null as Record<string, unknown> | null,
     rpcCalls: [] as { name: string; args: unknown }[],
   },
 }))
@@ -20,15 +22,19 @@ vi.mock('./config', () => ({ loadAiConfig: h.loadAiConfig }))
 vi.mock('./context', () => ({ buildConversationContext: h.buildConversationContext }))
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
-vi.mock('./classifier', () => ({ classifyNegotiation: h.classifyNegotiation }))
+vi.mock('./classifier', () => ({ 
+  classifyNegotiation: h.classifyNegotiation,
+  classifyNurture: h.classifyNurture 
+}))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
-    from: () => {
+    from: (table: string) => {
       // conversations / deals
       const chainable = {
         select: () => chainable,
         eq: () => chainable,
+        not: () => chainable,
         order: () => chainable,
         limit: () => chainable,
         maybeSingle: () => Promise.resolve({ data: h.state.conv, error: null }),
@@ -36,8 +42,27 @@ vi.mock('./admin-client', () => ({
       return {
         ...chainable,
         update: (payload: Record<string, unknown>) => {
-          h.state.updatePayload = payload
-          return { eq: () => Promise.resolve({ error: null }) }
+          if (table === 'conversations') {
+            h.state.updatePayload = payload
+          } else if (table === 'deals') {
+            h.state.dealsUpdatePayload = payload
+          }
+          const updater = { eq: () => updater, not: () => Promise.resolve({ error: null }) }
+          // We need a promise that can chain eq and not.
+          // Simplest is returning an object with eq and not that return themselves or a promise.
+          return {
+            eq: () => ({
+              eq: () => ({
+                not: () => Promise.resolve({ error: null })
+              }),
+              then: (res: any, rej: any) => Promise.resolve({ error: null }).then(res, rej)
+            }),
+            not: () => ({
+              eq: () => Promise.resolve({ error: null }),
+              then: (res: any, rej: any) => Promise.resolve({ error: null }).then(res, rej)
+            }),
+            then: (res: any, rej: any) => Promise.resolve({ error: null }).then(res, rej)
+          }
         },
       }
     },
@@ -79,6 +104,7 @@ beforeEach(() => {
     ai_reply_count: 0,
   }
   h.state.updatePayload = null
+  h.state.dealsUpdatePayload = null
   h.state.rpcCalls = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
@@ -86,6 +112,7 @@ beforeEach(() => {
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
   h.classifyNegotiation.mockResolvedValue(null)
+  h.classifyNurture.mockResolvedValue(null)
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -408,5 +435,73 @@ describe('dispatchInboundToAiReply — negotiation detection', () => {
     await dispatchInboundToAiReply(ARGS)
 
     expect(h.engineSendText).toHaveBeenCalled()
+  })
+})
+
+describe('dispatchInboundToAiReply — nurture detection', () => {
+  it('Qualified stage + genuine deferral => nurture_suggestion created', async () => {
+    h.state.conv = { assigned_agent_id: null, ai_autoreply_disabled: false, ai_reply_count: 0 }
+    h.state.rpcCalls = []
+    // stage is Qualified
+    h.state.conv.stage = { name: 'Qualified' }
+    
+    // We need to mock the active deal in the db response.
+    // The query is `from('deals').select(...)`. 
+    // In our mock, `maybeSingle` resolves to `h.state.conv`.
+    // So if we set `h.state.conv.stage.name = 'Qualified'`, it thinks it's a Qualified deal.
+    
+    h.classifyNurture.mockResolvedValue({
+      nurture_detected: true,
+      reason: 'User asked to contact next month',
+      raw_follow_up_phrase: 'next month',
+      confidence: 0.95
+    })
+
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.classifyNurture).toHaveBeenCalled()
+    expect(h.state.updatePayload).toMatchObject({
+      nurture_suggestion: {
+        detected: true,
+        reason: 'User asked to contact next month',
+        raw_follow_up_phrase: 'next month',
+        confidence: 0.95,
+      }
+    })
+  })
+
+  it('New Lead stage => classifier not run', async () => {
+    h.state.conv = { assigned_agent_id: null, ai_autoreply_disabled: false, ai_reply_count: 0, stage: { name: 'New Lead' } }
+    
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.classifyNurture).not.toHaveBeenCalled()
+  })
+
+  it('Proposal Sent stage + negotiation takes precedence over nurture', async () => {
+    h.state.conv = { assigned_agent_id: null, ai_autoreply_disabled: false, ai_reply_count: 0, stage: { name: 'Proposal Sent' } }
+    
+    h.classifyNegotiation.mockResolvedValue({
+      negotiation_detected: true,
+      reason: 'Negotiation',
+      confidence: 0.9
+    })
+    
+    await dispatchInboundToAiReply(ARGS)
+
+    expect(h.classifyNegotiation).toHaveBeenCalled()
+    expect(h.classifyNurture).not.toHaveBeenCalled()
+    expect(h.state.updatePayload).toMatchObject({
+      negotiation_suggestion: { detected: true }
+    })
+  })
+
+  it('early reply clears follow_up_at', async () => {
+    h.state.dealsUpdatePayload = null
+    await dispatchInboundToAiReply(ARGS)
+    
+    expect(h.state.dealsUpdatePayload).toMatchObject({
+      follow_up_at: null
+    })
   })
 })

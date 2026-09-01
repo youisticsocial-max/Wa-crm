@@ -8,7 +8,7 @@ import { buildHandoffSummary, buildBridgeMessage, extractHandoffBrief } from './
 import { sanitizeReplyScript, formatWhatsAppMessage } from './sanitize'
 import { logAiUsage } from './usage'
 import { latestCustomerBurst, latestUserMessage } from './query'
-import { classifyNegotiation } from './classifier'
+import { classifyNegotiation, classifyNurture } from './classifier'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendPushToUser, sendPushToQueue } from '@/lib/push/send'
@@ -57,7 +57,7 @@ export async function dispatchInboundToAiReply(
     // ownership here because a human may take over during the 8-second wait.
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
+      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, negotiation_suggestion, nurture_suggestion')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr || !conv) return
@@ -65,6 +65,15 @@ export async function dispatchInboundToAiReply(
     if (conv.ai_autoreply_disabled) return // handed off / turned off here
     const messages = await buildConversationContext(db, conversationId)
     if (messages.length === 0) return
+
+    // Customer replied early -> cancel any pending nurture follow-up reminder
+    await db
+      .from('deals')
+      .update({ follow_up_at: null })
+      .eq('account_id', accountId)
+      .eq('contact_id', contactId)
+      .not('follow_up_at', 'is', null)
+
 
     // Account-wide throttle on the shared BYO key. Durable inbound
     // debounce bounds one thread; this bounds a burst across many threads
@@ -134,7 +143,7 @@ export async function dispatchInboundToAiReply(
       console.error('[ai auto-reply] qualification evaluation failed:', err)
     }
 
-    // Evaluate negotiation silently
+    // Evaluate negotiation and nurture silently
     try {
       const { data: activeDeal } = await db
         .from('deals')
@@ -149,9 +158,11 @@ export async function dispatchInboundToAiReply(
       // @ts-ignore - Supabase type generation doesn't know about the join alias structure here
       const stageName = activeDeal?.stage?.name
       
+      let negotiationTriggered = false
       if (activeDeal && stageName === 'Proposal Sent') {
         const negotiation = await classifyNegotiation(customerText, config)
         if (negotiation?.negotiation_detected && negotiation.confidence >= 0.80) {
+          negotiationTriggered = true
           await db.from('conversations').update({
             negotiation_suggestion: {
               detected: true,
@@ -162,8 +173,31 @@ export async function dispatchInboundToAiReply(
           }).eq('id', conversationId)
         }
       }
+
+      if (
+        !negotiationTriggered &&
+        activeDeal &&
+        ['Qualified', 'Proposal Sent', 'Negotiation'].includes(stageName as string)
+      ) {
+        // @ts-ignore - nurture_suggestion is dynamic until typings are generated
+        const prevNurture = conv.nurture_suggestion as any
+        if (!prevNurture || prevNurture.message_burst !== customerText) {
+          const nurture = await classifyNurture(customerText, config)
+          if (nurture?.nurture_detected && nurture.confidence >= 0.80) {
+            await db.from('conversations').update({
+              nurture_suggestion: {
+                detected: true,
+                reason: nurture.reason,
+                raw_follow_up_phrase: nurture.raw_follow_up_phrase,
+                confidence: nurture.confidence,
+                message_burst: customerText
+              }
+            }).eq('id', conversationId)
+          }
+        }
+      }
     } catch (err) {
-      console.error('[ai auto-reply] negotiation evaluation failed:', err)
+      console.error('[ai auto-reply] negotiation/nurture evaluation failed:', err)
     }
 
     if (handoff || !text) {

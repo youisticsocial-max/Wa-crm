@@ -51,6 +51,7 @@ import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
 import { AiHandoffBrief } from "./ai-handoff-brief";
 import { NegotiationBanner } from "./negotiation-banner";
+import { NurtureBanner } from "./nurture-banner";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
 
@@ -1075,6 +1076,18 @@ export function MessageThread({
           conversationId={conversation.id}
           contactId={conversation.contact_id}
           reason={conversation.negotiation_suggestion.reason}
+          onDismiss={() => {}}
+          onAdvanced={() => {}}
+        />
+      )}
+
+      {/* @ts-ignore - nurture_suggestion is dynamic until db push and type gen */}
+      {(conversation as any)?.nurture_suggestion && (conversation as any).nurture_suggestion.detected && (
+        <NurtureBanner
+          conversationId={conversation.id}
+          contactId={conversation.contact_id}
+          reason={(conversation as any).nurture_suggestion.reason}
+          rawPhrase={(conversation as any).nurture_suggestion.raw_follow_up_phrase}
           onDismiss={() => {}}
           onAdvanced={() => {}}
         />
