@@ -58,7 +58,7 @@ type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
 const HEADER_FORMATS: HeaderFormat[] = ['none', 'text', 'image', 'video', 'document'];
 
 const categoryColors: Record<string, string> = {
-  Marketing: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
+  Marketing: 'bg-primary/20 text-primary border-primary/30',
   Utility: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
   Authentication: 'bg-amber-600/20 text-amber-400 border-amber-600/30',
 };
