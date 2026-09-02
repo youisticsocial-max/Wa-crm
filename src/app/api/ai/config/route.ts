@@ -30,7 +30,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, base_url, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key',
+        'provider, model, base_url, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, ooo_enabled, ooo_timezone, ooo_working_days, ooo_start_time, ooo_end_time, ooo_fallback_message',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -108,6 +108,13 @@ export async function POST(request: Request) {
     let maxPer = Number(body.auto_reply_max_per_conversation)
     if (!Number.isFinite(maxPer)) maxPer = 3
     maxPer = Math.min(20, Math.max(1, Math.floor(maxPer)))
+
+    const oooEnabled = body.ooo_enabled === true
+    const oooTimezone = typeof body.ooo_timezone === 'string' && body.ooo_timezone.trim() ? body.ooo_timezone.trim() : null
+    const oooWorkingDays = Array.isArray(body.ooo_working_days) ? body.ooo_working_days.filter((d: unknown) => typeof d === 'number') : null
+    const oooStartTime = typeof body.ooo_start_time === 'string' && body.ooo_start_time.trim() ? body.ooo_start_time.trim() : null
+    const oooEndTime = typeof body.ooo_end_time === 'string' && body.ooo_end_time.trim() ? body.ooo_end_time.trim() : null
+    const oooFallbackMessage = typeof body.ooo_fallback_message === 'string' && body.ooo_fallback_message.trim() ? body.ooo_fallback_message.trim() : null
 
     // Handoff routing target for auto-reply. A non-empty string must be a
     // member of this account (else the conversation would be assigned to a
@@ -188,6 +195,12 @@ export async function POST(request: Request) {
           autoReplyMaxPerConversation: maxPer,
           handoffAgentId: null,
           embeddingsApiKey: null,
+          oooEnabled,
+          oooTimezone,
+          oooWorkingDays,
+          oooStartTime,
+          oooEndTime,
+          oooFallbackMessage,
         })
       } catch (err) {
         if (err instanceof AiError) {
@@ -227,6 +240,12 @@ export async function POST(request: Request) {
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,
       auto_reply_max_per_conversation: maxPer,
+      ooo_enabled: oooEnabled,
+      ooo_timezone: oooTimezone,
+      ooo_working_days: oooWorkingDays,
+      ooo_start_time: oooStartTime,
+      ooo_end_time: oooEndTime,
+      ooo_fallback_message: oooFallbackMessage,
     }
     // Only touch the handoff target when the form actually sent the field,
     // so a partial save (e.g. flipping a toggle) doesn't wipe it.

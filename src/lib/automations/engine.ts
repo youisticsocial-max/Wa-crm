@@ -735,6 +735,46 @@ async function resolveConversationId(args: ExecuteArgs): Promise<string> {
   return data.id as string
 }
 
+export function isOutsideBusinessHours(cfg: { timezone: string; working_days: number[]; start_time: string; end_time: string }): boolean {
+  try {
+    // Get current date/time in the configured timezone
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: cfg.timezone,
+      weekday: 'short',
+      hour: 'numeric',
+      minute: 'numeric',
+      hour12: false, // Force 24 hour to easily compare HH:mm
+    })
+    
+    const dateParts = formatter.formatToParts(new Date())
+    const part = (type: string) => dateParts.find((p) => p.type === type)?.value
+    
+    // Map short weekday string to number (0=Sun, 1=Mon, ..., 6=Sat)
+    const weekdayStr = part('weekday')
+    const daysMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
+    const dayOfWeek = weekdayStr ? (daysMap[weekdayStr] ?? new Date().getDay()) : new Date().getDay()
+    
+    const hh = part('hour')?.padStart(2, '0')
+    const mm = part('minute')?.padStart(2, '0')
+    const currentTimeStr = `${hh}:${mm}`
+    
+    // If it's a non-working day, it's outside business hours.
+    if (!cfg.working_days.includes(dayOfWeek)) {
+      return true
+    }
+    
+    // Check if current time is outside start_time / end_time range
+    if (currentTimeStr < cfg.start_time || currentTimeStr >= cfg.end_time) {
+      return true
+    }
+    
+    return false
+  } catch (e) {
+    console.error('[business hours] check failed (bad timezone?):', e)
+    return false
+  }
+}
+
 export function triggerMatches(automation: Automation, ctx: AutomationContext | undefined): boolean {
   if (automation.trigger_type === 'out_of_office') {
     const cfg = automation.trigger_config as OutOfOfficeTriggerConfig
@@ -748,43 +788,7 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
       }
     }
 
-    try {
-      // Get current date/time in the configured timezone
-      const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: cfg.timezone,
-        weekday: 'short',
-        hour: 'numeric',
-        minute: 'numeric',
-        hour12: false, // Force 24 hour to easily compare HH:mm
-      })
-      
-      const dateParts = formatter.formatToParts(new Date())
-      const part = (type: string) => dateParts.find((p) => p.type === type)?.value
-      
-      // Map short weekday string to number (0=Sun, 1=Mon, ..., 6=Sat)
-      const weekdayStr = part('weekday')
-      const daysMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 }
-      const dayOfWeek = weekdayStr ? (daysMap[weekdayStr] ?? new Date().getDay()) : new Date().getDay()
-      
-      const hh = part('hour')?.padStart(2, '0')
-      const mm = part('minute')?.padStart(2, '0')
-      const currentTimeStr = `${hh}:${mm}`
-      
-      // If it's a non-working day, it's outside business hours.
-      if (!cfg.working_days.includes(dayOfWeek)) {
-        return true
-      }
-      
-      // Check if current time is outside start_time / end_time range
-      if (currentTimeStr < cfg.start_time || currentTimeStr >= cfg.end_time) {
-        return true
-      }
-      
-      return false
-    } catch (e) {
-      console.error('[automations] OOO check failed (bad timezone?):', e)
-      return false
-    }
+    return isOutsideBusinessHours(cfg)
   }
   if (automation.trigger_type === 'keyword_match') {
     const cfg = automation.trigger_config as KeywordMatchTriggerConfig

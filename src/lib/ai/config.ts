@@ -13,10 +13,16 @@ interface AiConfigRow {
   auto_reply_max_per_conversation: number
   handoff_agent_id: string | null
   embeddings_api_key: string | null
+  ooo_enabled: boolean
+  ooo_timezone: string | null
+  ooo_working_days: number[] | null
+  ooo_start_time: string | null
+  ooo_end_time: string | null
+  ooo_fallback_message: string | null
 }
 
 const CONFIG_COLUMNS =
-  'provider, model, api_key, base_url, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key'
+  'provider, model, api_key, base_url, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, ooo_enabled, ooo_timezone, ooo_working_days, ooo_start_time, ooo_end_time, ooo_fallback_message'
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -89,6 +95,12 @@ export async function loadAiConfig(
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
     embeddingsApiKey,
+    oooEnabled: row.ooo_enabled ?? false,
+    oooTimezone: row.ooo_timezone ?? null,
+    oooWorkingDays: row.ooo_working_days ?? null,
+    oooStartTime: row.ooo_start_time ?? null,
+    oooEndTime: row.ooo_end_time ?? null,
+    oooFallbackMessage: row.ooo_fallback_message ?? null,
   }
 }
 

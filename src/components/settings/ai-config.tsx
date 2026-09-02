@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import {
   Card,
   CardContent,
@@ -58,6 +59,16 @@ const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   custom: 'API Key (if required)',
 };
 
+const WEEKDAYS = [
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+  { value: 0, label: 'Sunday' },
+];
+
 export function AiConfig() {
   const { accountId, accountRole, profileLoading } = useAuth();
   const canEdit = accountRole ? canEditSettings(accountRole) : false;
@@ -83,6 +94,15 @@ export function AiConfig() {
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [maxPerConversation, setMaxPerConversation] = useState(3);
+  
+  // OOO Fallback State
+  const [oooEnabled, setOooEnabled] = useState(false);
+  const [oooTimezone, setOooTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const [oooWorkingDays, setOooWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [oooStartTime, setOooStartTime] = useState('09:00');
+  const [oooEndTime, setOooEndTime] = useState('17:00');
+  const [oooFallbackMessage, setOooFallbackMessage] = useState('Thanks for reaching out! We are currently outside of our business hours, but your message has been received and someone from our team will follow up as soon as possible.');
+
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
@@ -112,6 +132,14 @@ export function AiConfig() {
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
         setHandoffAgentId(data.handoff_agent_id ?? '');
+
+        setOooEnabled(data.ooo_enabled ?? false);
+        setOooTimezone(data.ooo_timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+        setOooWorkingDays(data.ooo_working_days ?? [1, 2, 3, 4, 5]);
+        setOooStartTime(data.ooo_start_time ?? '09:00');
+        setOooEndTime(data.ooo_end_time ?? '17:00');
+        setOooFallbackMessage(data.ooo_fallback_message ?? 'Thanks for reaching out! We are currently outside of our business hours, but your message has been received and someone from our team will follow up as soon as possible.');
+
         setHasStoredKey(Boolean(data.has_key));
         setApiKey(data.has_key ? MASKED_KEY : '');
         setKeyEdited(false);
@@ -149,6 +177,14 @@ export function AiConfig() {
   const embeddingsKeyPayload = () =>
     embeddingsKeyEdited ? embeddingsKey.trim() || null : undefined;
 
+  const toggleDay = (day: number) => {
+    if (oooWorkingDays.includes(day)) {
+      setOooWorkingDays(oooWorkingDays.filter((d) => d !== day));
+    } else {
+      setOooWorkingDays([...oooWorkingDays, day].sort());
+    }
+  };
+
   const buildBody = () => ({
     provider,
     model: model.trim(),
@@ -160,6 +196,12 @@ export function AiConfig() {
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
+    ooo_enabled: oooEnabled,
+    ooo_timezone: oooTimezone || null,
+    ooo_working_days: oooWorkingDays,
+    ooo_start_time: oooStartTime || null,
+    ooo_end_time: oooEndTime || null,
+    ooo_fallback_message: oooFallbackMessage || null,
   });
 
   const handleTest = async () => {
@@ -230,6 +272,7 @@ export function AiConfig() {
         setAutoReplyEnabled(false);
         setSystemPrompt('');
         setHandoffAgentId('');
+        setOooEnabled(false);
       } else {
         const data = await res.json();
         toast.error(data.error ?? t('removeFailed'));
@@ -490,6 +533,113 @@ export function AiConfig() {
                 </SelectContent>
               </Select>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Out of Office Fallback</CardTitle>
+            <CardDescription>
+              Automatically send a fallback message if the AI decides a human handoff is needed outside of your business hours. The AI continues to reply normally to standard questions 24/7.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">
+                  Enable OOO Fallback
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Send the fallback message during outside hours upon handoff.
+                </p>
+              </div>
+              <Switch
+                checked={oooEnabled}
+                onCheckedChange={setOooEnabled}
+                disabled={disabled}
+              />
+            </div>
+
+            {oooEnabled && (
+              <div className="space-y-4 rounded-md border border-border p-4 bg-muted/30">
+                <div>
+                  <Label>Timezone</Label>
+                  <Input
+                    value={oooTimezone || ''}
+                    onChange={(e) => setOooTimezone(e.target.value)}
+                    placeholder="e.g. America/New_York"
+                    disabled={disabled}
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Must be a valid IANA timezone.
+                  </p>
+                </div>
+
+                <div>
+                  <Label>Working Days</Label>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {WEEKDAYS.map((day) => {
+                      const active = oooWorkingDays.includes(day.value);
+                      return (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => toggleDay(day.value)}
+                          disabled={disabled}
+                          className={cn(
+                            "rounded-md border px-2 py-1 text-xs transition-colors",
+                            active
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border bg-muted text-muted-foreground hover:bg-muted/80",
+                            disabled && "opacity-50 cursor-not-allowed"
+                          )}
+                        >
+                          {day.label.slice(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="flex-1">
+                    <Label>Start Time</Label>
+                    <Input
+                      type="time"
+                      value={oooStartTime || ''}
+                      onChange={(e) => setOooStartTime(e.target.value)}
+                      disabled={disabled}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <Label>End Time</Label>
+                    <Input
+                      type="time"
+                      value={oooEndTime || ''}
+                      onChange={(e) => setOooEndTime(e.target.value)}
+                      disabled={disabled}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <Label>Fallback Message</Label>
+                  <Textarea
+                    value={oooFallbackMessage || ''}
+                    onChange={(e) => setOooFallbackMessage(e.target.value)}
+                    disabled={disabled}
+                    className="mt-1"
+                    rows={3}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Sent once per conversation (12-hour cooldown) when handoff occurs outside hours.
+                  </p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 

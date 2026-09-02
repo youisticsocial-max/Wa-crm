@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AiConfig } from './types'
 
 // Shared, hoisted mock state so the module mocks can close over it.
@@ -11,6 +11,8 @@ const h = vi.hoisted(() => ({
   classifyNegotiation: vi.fn(),
   classifyNurture: vi.fn(),
   classifyTerminalIntent: vi.fn(),
+  sendPushToUser: vi.fn(),
+  sendPushToQueue: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     updatePayload: null as Record<string, unknown> | null,
@@ -29,6 +31,10 @@ vi.mock('./classifier', () => ({
   classifyNegotiation: h.classifyNegotiation,
   classifyNurture: h.classifyNurture,
   classifyTerminalIntent: h.classifyTerminalIntent, 
+}))
+vi.mock('@/lib/push/send', () => ({
+  sendPushToUser: h.sendPushToUser,
+  sendPushToQueue: h.sendPushToQueue,
 }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
 vi.mock('@/lib/rate-limit', () => ({ 
@@ -96,6 +102,12 @@ function aiConfig(overrides: Partial<AiConfig> = {}): AiConfig {
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
     embeddingsApiKey: null,
+    oooEnabled: false,
+    oooTimezone: null,
+    oooWorkingDays: null,
+    oooStartTime: null,
+    oooEndTime: null,
+    oooFallbackMessage: null,
     ...overrides,
   }
 }
@@ -232,6 +244,119 @@ describe('dispatchInboundToAiReply — handoff', () => {
     await dispatchInboundToAiReply(ARGS)
     expect(h.state.updatePayload).toMatchObject({
       assigned_agent_id: 'agent-7',
+    })
+  })
+
+  describe('OOO Fallback', () => {
+    beforeEach(() => {
+      // Set fixed time to Saturday 10:00 AM (Weekend)
+      vi.useFakeTimers()
+      const date = new Date('2023-10-14T10:00:00Z') // A Saturday
+      vi.setSystemTime(date)
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    const oooConfigOverrides = {
+      oooEnabled: true,
+      oooTimezone: 'UTC',
+      oooWorkingDays: [1, 2, 3, 4, 5], // Mon-Fri
+      oooStartTime: '09:00',
+      oooEndTime: '17:00',
+      oooFallbackMessage: 'We are OOO right now.',
+    }
+
+    it('outside hours + normal question -> AI replies normally, no OOO message', async () => {
+      h.loadAiConfig.mockResolvedValue(aiConfig(oooConfigOverrides))
+      h.generateReply.mockResolvedValue({ text: 'Normal reply', handoff: false })
+      await dispatchInboundToAiReply(ARGS)
+      
+      expect(h.engineSendText).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Normal reply', aiGenerated: true })
+      )
+      // Should not update last_ooo_sent_at
+      const updates = h.state.updatePayloads.filter(p => 'last_ooo_sent_at' in p)
+      expect(updates).toHaveLength(0)
+    })
+
+    it('outside hours + handoff -> OOO fallback sent, cooldown updated, push notification created', async () => {
+      h.loadAiConfig.mockResolvedValue(aiConfig(oooConfigOverrides))
+      h.generateReply.mockResolvedValue({ text: '', handoff: true })
+      await dispatchInboundToAiReply(ARGS)
+      
+      // Should send the exact OOO message, not AI generated
+      expect(h.engineSendText).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'We are OOO right now.', aiGenerated: false })
+      )
+      // Should update last_ooo_sent_at
+      const updates = h.state.updatePayloads.filter(p => 'last_ooo_sent_at' in p)
+      expect(updates).toHaveLength(1)
+      
+      // Handoff summary still written
+      const summaryUpdates = h.state.updatePayloads.filter(p => 'ai_handoff_summary' in p)
+      expect(summaryUpdates.length).toBeGreaterThan(0)
+
+      // Push notification created
+      expect(h.sendPushToQueue).toHaveBeenCalledWith(
+        expect.anything(),
+        'acct-1',
+        expect.objectContaining({ type: 'ai_handoff' })
+      )
+    })
+
+    it('disabled fallback (oooEnabled: false) -> existing AI/handoff behavior', async () => {
+      h.loadAiConfig.mockResolvedValue(aiConfig({ ...oooConfigOverrides, oooEnabled: false }))
+      h.generateReply.mockResolvedValue({ text: 'Standard bridge', handoff: true })
+      await dispatchInboundToAiReply(ARGS)
+      
+      expect(h.engineSendText).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'Standard bridge', aiGenerated: true })
+      )
+      const updates = h.state.updatePayloads.filter(p => 'last_ooo_sent_at' in p)
+      expect(updates).toHaveLength(0)
+    })
+
+    it('inside hours + handoff -> no OOO fallback, standard bridge message', async () => {
+      // Set to Monday 10:00 AM
+      vi.setSystemTime(new Date('2023-10-16T10:00:00Z'))
+      
+      h.loadAiConfig.mockResolvedValue(aiConfig(oooConfigOverrides))
+      h.generateReply.mockResolvedValue({ text: 'I am fetching a human.', handoff: true })
+      await dispatchInboundToAiReply(ARGS)
+      
+      // Sends the AI bridge message, not the fallback
+      expect(h.engineSendText).toHaveBeenCalledWith(
+        expect.objectContaining({ text: 'I am fetching a human.', aiGenerated: true })
+      )
+      // Should NOT update last_ooo_sent_at
+      const updates = h.state.updatePayloads.filter(p => 'last_ooo_sent_at' in p)
+      expect(updates).toHaveLength(0)
+    })
+
+    it('repeated handoff during cooldown -> no duplicate fallback sent', async () => {
+      h.loadAiConfig.mockResolvedValue(aiConfig(oooConfigOverrides))
+      h.generateReply.mockResolvedValue({ text: '', handoff: true })
+      
+      // Set last OOO sent 2 hours ago
+      h.state.conv = {
+        ...h.state.conv,
+        last_ooo_sent_at: new Date(Date.now() - 2 * 3600 * 1000).toISOString()
+      }
+      
+      await dispatchInboundToAiReply(ARGS)
+      
+      // Because it's on cooldown, no message should be sent (bridgeText is empty)
+      expect(h.engineSendText).not.toHaveBeenCalled()
+      
+      // last_ooo_sent_at should not be updated again
+      const updates = h.state.updatePayloads.filter(p => 'last_ooo_sent_at' in p)
+      expect(updates).toHaveLength(0)
+      
+      // But handoff summary still gets written
+      const summaryUpdates = h.state.updatePayloads.filter(p => 'ai_handoff_summary' in p)
+      expect(summaryUpdates.length).toBeGreaterThan(0)
     })
   })
 })

@@ -10,6 +10,7 @@ import { logAiUsage } from './usage'
 import { latestCustomerBurst, latestUserMessage } from './query'
 import { classifyNegotiation, classifyNurture, classifyTerminalIntent } from './classifier'
 import { engineSendText } from '@/lib/flows/meta-send'
+import { isOutsideBusinessHours } from '@/lib/automations/engine'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendPushToUser, sendPushToQueue } from '@/lib/push/send'
 
@@ -57,7 +58,7 @@ export async function dispatchInboundToAiReply(
     // ownership here because a human may take over during the 8-second wait.
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, negotiation_suggestion, nurture_suggestion')
+      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, negotiation_suggestion, nurture_suggestion, last_ooo_sent_at')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr || !conv) return
@@ -227,9 +228,51 @@ export async function dispatchInboundToAiReply(
     }
 
     if (handoff || !text) {
+      // Determine if we should send an Out of Office fallback message instead of the AI bridge message.
+      let useOooFallback = false
+      let oooText = ''
+      
+      if (
+        config.oooEnabled &&
+        config.oooTimezone &&
+        config.oooWorkingDays &&
+        config.oooStartTime &&
+        config.oooEndTime &&
+        config.oooFallbackMessage
+      ) {
+        const isOoo = isOutsideBusinessHours({
+          timezone: config.oooTimezone,
+          working_days: config.oooWorkingDays,
+          start_time: config.oooStartTime,
+          end_time: config.oooEndTime,
+        })
+        
+        if (isOoo) {
+          const twelveHoursMs = 12 * 60 * 60 * 1000
+          const onCooldown =
+            conv.last_ooo_sent_at &&
+            Date.now() - new Date(conv.last_ooo_sent_at).getTime() < twelveHoursMs
+            
+          if (!onCooldown) {
+            useOooFallback = true
+            oooText = config.oooFallbackMessage
+          } else {
+            // Cooldown active -> send nothing, not even the bridge message, to avoid spam
+            oooText = ''
+            useOooFallback = true
+          }
+        }
+      }
+
       // Ensure the customer gets a natural bridge message rather than an abrupt silence.
-      const rawBridge = text && text.trim() ? text.trim() : buildBridgeMessage(messages)
-      const bridgeText = formatWhatsAppMessage(sanitizeReplyScript(rawBridge, customerText))
+      const rawBridge = useOooFallback 
+        ? oooText
+        : (text && text.trim() ? text.trim() : buildBridgeMessage(messages))
+        
+      const bridgeText = useOooFallback
+        ? rawBridge // Don't sanitize the exact configured OOO message
+        : formatWhatsAppMessage(sanitizeReplyScript(rawBridge, customerText))
+        
       const hasBridge = Boolean(bridgeText)
 
       // The model can't (or shouldn't) answer — stop auto-replying on
@@ -283,9 +326,17 @@ export async function dispatchInboundToAiReply(
           conversationId,
           contactId,
           text: bridgeText,
-          aiGenerated: true,
+          aiGenerated: !useOooFallback, // OOO fallback is considered a deterministic template/message
         })
-        await recordAiReplySent(db, conversationId)
+        
+        if (useOooFallback) {
+          await db
+            .from('conversations')
+            .update({ last_ooo_sent_at: new Date().toISOString() })
+            .eq('id', conversationId)
+        } else {
+          await recordAiReplySent(db, conversationId)
+        }
       }
       return
     }

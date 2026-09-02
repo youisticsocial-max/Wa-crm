@@ -37,6 +37,12 @@ export interface AiConfig {
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null
+  oooEnabled: boolean
+  oooTimezone: string | null
+  oooWorkingDays: number[] | null
+  oooStartTime: string | null
+  oooEndTime: string | null
+  oooFallbackMessage: string | null
 }
 
 /** A single conversation turn in the shape both providers accept. */

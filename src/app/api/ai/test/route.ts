@@ -81,18 +81,24 @@ export async function POST(request: Request) {
     }
 
     try {
-      await validateAiCredentials({
-        provider,
-        model,
-        apiKey: apiKeyPlain,
-        baseUrl,
-        systemPrompt: null,
-        isActive: true,
-        autoReplyEnabled: false,
-        autoReplyMaxPerConversation: 3,
-        handoffAgentId: null,
-        embeddingsApiKey: null,
-      })
+        await validateAiCredentials({
+          provider,
+          model,
+          apiKey: apiKeyPlain,
+          baseUrl,
+          systemPrompt: null,
+          isActive: true,
+          autoReplyEnabled: false,
+          autoReplyMaxPerConversation: 3,
+          handoffAgentId: null,
+          embeddingsApiKey: null,
+          oooEnabled: false,
+          oooTimezone: null,
+          oooWorkingDays: null,
+          oooStartTime: null,
+          oooEndTime: null,
+          oooFallbackMessage: null,
+        })
     } catch (err) {
       if (err instanceof AiError) {
         return NextResponse.json(

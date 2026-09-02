@@ -13,6 +13,12 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
     autoReplyMaxPerConversation: 3,
     handoffAgentId: null,
     embeddingsApiKey: null,
+    oooEnabled: false,
+    oooTimezone: null,
+    oooWorkingDays: null,
+    oooStartTime: null,
+    oooEndTime: null,
+    oooFallbackMessage: null,
     ...overrides,
   }
 }
