@@ -3,8 +3,8 @@ import type { MetadataRoute } from 'next'
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Youistic WA-CRM',
-    short_name: 'WA-CRM',
-    description: 'Self-hostable CRM template for WhatsApp',
+    short_name: 'Youistic CRM',
+    description: 'AI-powered WhatsApp CRM by Youistic',
     start_url: '/inbox',
     display: 'standalone',
     background_color: '#020617',

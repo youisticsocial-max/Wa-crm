@@ -105,6 +105,19 @@ export async function POST(request: Request) {
       mode: 'draft',
       knowledge,
       agentInstructions: agentPrompt,
+      businessHours:
+        config.oooEnabled &&
+        config.oooTimezone &&
+        config.oooWorkingDays &&
+        config.oooStartTime &&
+        config.oooEndTime
+          ? {
+              timezone: config.oooTimezone,
+              workingDays: config.oooWorkingDays,
+              startTime: config.oooStartTime,
+              endTime: config.oooEndTime,
+            }
+          : null,
     })
 
     const { text, usage } = await generateReply({ config, systemPrompt, messages })

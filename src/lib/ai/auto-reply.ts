@@ -120,6 +120,19 @@ export async function dispatchInboundToAiReply(
       mode: 'auto_reply',
       knowledge,
       currentCustomerBurst: currentBurst,
+      businessHours:
+        config.oooEnabled &&
+        config.oooTimezone &&
+        config.oooWorkingDays &&
+        config.oooStartTime &&
+        config.oooEndTime
+          ? {
+              timezone: config.oooTimezone,
+              workingDays: config.oooWorkingDays,
+              startTime: config.oooStartTime,
+              endTime: config.oooEndTime,
+            }
+          : null,
     })
 
     const { text, handoff, usage } = await generateReply({

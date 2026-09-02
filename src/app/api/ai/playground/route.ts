@@ -82,6 +82,19 @@ export async function POST(request: Request) {
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      businessHours:
+        config.oooEnabled &&
+        config.oooTimezone &&
+        config.oooWorkingDays &&
+        config.oooStartTime &&
+        config.oooEndTime
+          ? {
+              timezone: config.oooTimezone,
+              workingDays: config.oooWorkingDays,
+              startTime: config.oooStartTime,
+              endTime: config.oooEndTime,
+            }
+          : null,
     })
 
     const { text, handoff } = await generateReply({ config, systemPrompt, messages })

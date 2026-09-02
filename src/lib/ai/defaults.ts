@@ -73,8 +73,15 @@ export function buildSystemPrompt(args: {
   agentInstructions?: string | null
   /** Consecutive customer turns at the end of the transcript. */
   currentCustomerBurst?: string[]
+  /** Authoritative business hours configuration to ground the AI. */
+  businessHours?: {
+    timezone: string
+    workingDays: number[]
+    startTime: string
+    endTime: string
+  } | null
 }): string {
-  const { userPrompt, mode, knowledge, agentInstructions, currentCustomerBurst } = args
+  const { userPrompt, mode, knowledge, agentInstructions, currentCustomerBurst, businessHours } = args
   const parts: string[] = [
     'You are a customer-messaging assistant for a business that uses a WhatsApp CRM. ' +
       'You are shown the recent WhatsApp conversation between the business (assistant) and a customer (user). ' +
@@ -107,6 +114,18 @@ export function buildSystemPrompt(args: {
 
   if (userPrompt && userPrompt.trim()) {
     parts.push(`Business context and instructions:\n${userPrompt.trim()}`)
+  }
+
+  if (businessHours) {
+    const daysMap = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    const daysStr = businessHours.workingDays.map((d) => daysMap[d]).join(', ') || 'None'
+    parts.push(
+      `Authoritative business availability:\n` +
+      `Working days: ${daysStr}\n` +
+      `Hours: ${businessHours.startTime}-${businessHours.endTime}\n` +
+      `Timezone: ${businessHours.timezone}\n` +
+      `The assistant MUST use these exact values for any questions about office hours, business hours, opening/closing times, or working days, and must not invent different hours.`
+    )
   }
 
   if (agentInstructions && agentInstructions.trim()) {
