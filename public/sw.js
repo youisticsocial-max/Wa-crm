@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wacrm-offline-v1';
+const CACHE_NAME = 'wacrm-offline-v2';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {
@@ -56,8 +56,8 @@ self.addEventListener('push', (event) => {
     const title = data.title || 'New Notification';
     const options = {
       body: data.body || '',
-      icon: '/api/pwa-icon/192',
-      badge: '/api/pwa-icon/192',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
       data: {
         url: data.url || '/inbox',
       },

@@ -84,7 +84,7 @@ function LoginPageInner() {
             {inviteToken ? (
               <UsersRound className="h-6 w-6 text-primary" />
             ) : (
-              <MessageSquare className="h-6 w-6 text-primary" />
+              <img src="/icon-192.png" alt="Holaa Logo" className="h-6 w-6 object-contain" />
             )}
           </div>
           <CardTitle className="text-xl text-foreground">
