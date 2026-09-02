@@ -44,17 +44,17 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
   const isInbox = pathname?.startsWith("/inbox");
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-background">
+    <div className="flex h-[100dvh] w-full min-w-0 overflow-hidden bg-background">
       {/* Reports this tab's online/away presence once we know a user is
           signed in. Headless — renders nothing. */}
       <PresenceHeartbeat />
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />
         {/* Thinner horizontal padding on mobile so cards have room to breathe. */}
         <main
           className={cn(
-            "relative flex-1 overflow-y-auto overflow-x-hidden",
+            "relative flex flex-1 flex-col min-w-0 w-full overflow-y-auto overflow-x-hidden",
             !isInbox && "p-4 sm:p-6"
           )}
         >
