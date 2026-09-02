@@ -32,7 +32,13 @@ export const metadata: Metadata = {
     follow: false,
   },
   icons: {
-    icon: [{ url: "/icon" }],
+    icon: [
+      { url: '/favicon.ico?v=holaa', sizes: 'any' },
+      { url: '/icon-192.png?v=holaa', type: 'image/png', sizes: '192x192' },
+    ],
+    apple: [
+      { url: '/apple-icon.png?v=holaa', sizes: '180x180', type: 'image/png' },
+    ],
   },
   formatDetection: {
     email: false,
