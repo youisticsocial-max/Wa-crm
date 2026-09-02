@@ -24,6 +24,7 @@ import { sendPushToUser, sendPushToQueue } from '@/lib/push/send'
 // Inbound processing can fan out to per-media Meta verification calls, so
 // give it headroom beyond the platform default (Vercel clamps this to the
 // plan's ceiling). Tune as needed.
+export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
